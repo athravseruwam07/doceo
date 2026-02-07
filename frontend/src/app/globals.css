@@ -1,0 +1,249 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+/* ─── Doceo Design Tokens ─── */
+:root {
+  /* Paper & surface */
+  --cream: #F7F5F0;
+  --cream-dark: #EDEAE3;
+  --paper: #FFFEF9;
+  --paper-warm: #FAF8F3;
+
+  /* Ink & text */
+  --ink: #1A1A1A;
+  --ink-secondary: #4A4A46;
+  --ink-tertiary: #8A8A84;
+  --ink-faint: #B8B8B2;
+
+  /* Emerald accent — deep, scholarly */
+  --emerald: #1B6B52;
+  --emerald-light: #2A8A6A;
+  --emerald-subtle: #E8F4EF;
+  --emerald-wash: #F2FAF6;
+
+  /* Functional */
+  --border: #E2E0D8;
+  --border-strong: #D0CEC4;
+  --error: #C4453A;
+  --error-bg: #FDF2F1;
+
+  /* Shadows — warm-tinted, not cold gray */
+  --shadow-sm: 0 1px 2px rgba(26, 26, 26, 0.04);
+  --shadow-md: 0 2px 8px rgba(26, 26, 26, 0.06);
+  --shadow-lg: 0 4px 20px rgba(26, 26, 26, 0.08);
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Timing */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --font-heading: var(--font-crimson);
+  --font-body: var(--font-source);
+}
+
+@theme inline {
+  --color-background: var(--cream);
+  --color-foreground: var(--ink);
+  --color-emerald: var(--emerald);
+  --color-emerald-light: var(--emerald-light);
+  --color-emerald-subtle: var(--emerald-subtle);
+  --color-paper: var(--paper);
+  --color-paper-warm: var(--paper-warm);
+  --color-cream-dark: var(--cream-dark);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-tertiary: var(--ink-tertiary);
+  --color-ink-faint: var(--ink-faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-error: var(--error);
+  --color-error-bg: var(--error-bg);
+  --font-heading: var(--font-heading);
+  --font-body: var(--font-body);
+}
+
+/* ─── Base ─── */
+body {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--font-body), Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: var(--emerald-subtle);
+  color: var(--ink);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faint);
+}
+
+/* ─── Paper grain texture ─── */
+.paper-grain {
+  position: relative;
+}
+
+.paper-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+}
+
+.paper-grain > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── KaTeX overrides ─── */
+.katex-display {
+  margin: 1em 0 !important;
+  padding: 0.75em 1em;
+  background: var(--paper);
+  border-left: 2px solid var(--emerald);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.katex {
+  font-size: 1.05em !important;
+  color: var(--ink);
+}
+
+/* ─── Step reveal animation ─── */
+@keyframes step-appear {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Typing dots ─── */
+@keyframes dot-pulse {
+  0%, 60%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ─── Focus ring ─── */
+:focus-visible {
+  outline: 2px solid var(--emerald);
+  outline-offset: 2px;
+}
+
+/* ─── Whiteboard Player ─── */
+.whiteboard-canvas {
+  box-shadow: var(--shadow-lg);
+}
+
+/* Equation reveal cursor */
+.equation-reveal {
+  position: relative;
+}
+
+.equation-cursor {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 1.4em;
+  background: var(--emerald);
+  animation: cursor-blink 0.8s ease-in-out infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Typewriter cursor */
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--emerald);
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 0.8s ease-in-out infinite;
+}
+
+/* Typewriter line entry */
+.typewriter-line {
+  animation: line-appear 0.15s ease-out;
+}
+
+@keyframes line-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Narration bar */
+.narration-bar p {
+  animation: narration-fade 0.4s ease-out;
+}
+
+@keyframes narration-fade {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Player controls */
+.player-controls {
+  box-shadow: 0 -1px 4px rgba(26, 26, 26, 0.04);
+}
+
+/* Equation summary items */
+.equation-summary-item .katex-display {
+  margin: 0.5em 0 !important;
+  background: transparent;
+  border-left: none;
+  padding: 0.4em 0;
+}
