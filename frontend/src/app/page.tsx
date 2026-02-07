@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useUpload } from "@/hooks/useUpload";
+import { useTheme } from "@/hooks/useTheme";
 import UploadZone from "@/components/upload/UploadZone";
 import TextInputArea from "@/components/upload/TextInputArea";
 import UploadPreview from "@/components/upload/UploadPreview";
@@ -14,6 +15,7 @@ type InputMode = "upload" | "type";
 
 export default function Home() {
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
   const { file, setFile, text, setText, loading, error, submit } = useUpload();
   const [mode, setMode] = useState<InputMode>("type");
 
@@ -31,9 +33,39 @@ export default function Home() {
         <span className="font-[family-name:var(--font-heading)] text-[20px] font-semibold tracking-tight text-[var(--ink)]">
           Doceo
         </span>
-        <span className="text-[12px] text-[var(--ink-tertiary)] tracking-wide uppercase font-[family-name:var(--font-body)]">
-          AI Tutor
-        </span>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-md hover:bg-[var(--cream-dark)] transition-colors cursor-pointer"
+            aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            title={theme === "light" ? "Dark mode" : "Light mode"}
+          >
+            {theme === "light" ? (
+              <svg
+                className="w-5 h-5 text-[var(--ink)]"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+              </svg>
+            ) : (
+              <svg
+                className="w-5 h-5 text-[var(--ink)]"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1h0zm4.323 2.677a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707h0zm2.828 2.828a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zm2.828 2.829a1 1 0 00-1.415-1.414l-.707.707a1 1 0 001.414 1.414l.708-.707zM10 8a2 2 0 100 4 2 2 0 000-4zm.464 7.535a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zm2.828 2.829a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zm2.828 2.828a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-2.464 2.536a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM5.464 7.464a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zm2.828-2.829a1 1 0 00-1.414-1.414L5.343 4.464a1 1 0 001.414 1.414l.707-.707zm0 11.314a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM2 11a1 1 0 100-2H1a1 1 0 100 2h1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
+          </button>
+          <span className="text-[12px] text-[var(--ink-tertiary)] tracking-wide uppercase font-[family-name:var(--font-body)]">
+            AI Tutor
+          </span>
+        </div>
       </nav>
 
       {/* Hero + Input */}

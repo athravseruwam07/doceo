@@ -9,6 +9,9 @@ export interface LessonStep {
   content: string;
   math_blocks: MathBlock[];
   hint?: string;
+  narration?: string;
+  audio_url?: string;
+  audio_duration?: number;
 }
 
 export interface LessonCompleteEvent {
@@ -29,6 +32,9 @@ export interface ChatMessage {
   message: string;
   math_blocks?: MathBlock[];
   related_step?: number;
+  narration?: string;
+  audio_url?: string;
+  audio_duration?: number;
 }
 
 // ─── Animation Timeline Types ───
@@ -65,4 +71,5 @@ export interface PlayerState {
   speed: number;
   currentStep: number;
   totalSteps: number;
+  voiceEnabled: boolean;
 }

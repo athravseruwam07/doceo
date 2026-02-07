@@ -45,6 +45,38 @@
   --font-body: var(--font-source);
 }
 
+/* Dark mode theme */
+[data-theme="dark"] {
+  /* Paper & surface */
+  --cream: #1A1A1A;
+  --cream-dark: #242424;
+  --paper: #1F1F1F;
+  --paper-warm: #252525;
+
+  /* Ink & text */
+  --ink: #E8E8E8;
+  --ink-secondary: #B0B0B0;
+  --ink-tertiary: #808080;
+  --ink-faint: #606060;
+
+  /* Emerald accent — lighter for contrast on dark bg */
+  --emerald: #3FA876;
+  --emerald-light: #50BA8F;
+  --emerald-subtle: #1D5539;
+  --emerald-wash: #152A21;
+
+  /* Functional */
+  --border: #2A2A2A;
+  --border-strong: #3A3A3A;
+  --error: #FF6B60;
+  --error-bg: #3A1A17;
+
+  /* Shadows — adjusted for dark theme */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
 @theme inline {
   --color-background: var(--cream);
   --color-foreground: var(--ink);
@@ -67,6 +99,14 @@
 }
 
 /* ─── Base ─── */
+html {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 body {
   background: var(--cream);
   color: var(--ink);
@@ -246,4 +286,46 @@ body {
   background: transparent;
   border-left: none;
   padding: 0.4em 0;
+}
+
+/* Loading overlay improvements */
+@keyframes pulse-ring {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(27, 107, 82, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(27, 107, 82, 0);
+  }
+}
+
+/* Smooth transitions for theme */
+* {
+  @apply transition-colors duration-200;
+}
+
+body {
+  @apply transition-colors duration-300;
+}
+
+/* Split view divider */
+.split-view-divider {
+  position: relative;
+  width: 1px;
+  background: var(--border);
+}
+
+.split-view-divider::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

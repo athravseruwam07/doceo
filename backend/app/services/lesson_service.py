@@ -3,6 +3,7 @@ from typing import AsyncGenerator
 
 from app.models.session import get_session, update_session
 from app.services.ai_service import analyze_problem
+from app.services.voice_service import get_voice_service
 from app.schemas.lesson import LessonStep, LessonComplete
 
 
@@ -17,12 +18,29 @@ async def create_lesson(session_id: str) -> None:
         image_b64=session.get("image_b64"),
     )
 
+    # Generate audio for each step
+    voice_service = get_voice_service()
+    steps_with_audio = []
+
+    for step in result.get("steps", []):
+        # Get narration text
+        narration = step.get("narration", step.get("content", ""))
+
+        # Generate audio
+        audio_data = await voice_service.generate_narration_audio(narration)
+
+        # Add audio data to step
+        step["audio_url"] = audio_data.get("audio_url")
+        step["audio_duration"] = audio_data.get("duration", 0)
+
+        steps_with_audio.append(step)
+
     update_session(
         session_id,
         title=result["title"],
         subject=result["subject"],
-        steps=result["steps"],
-        step_count=len(result["steps"]),
+        steps=steps_with_audio,
+        step_count=len(steps_with_audio),
         status="streaming",
     )
 

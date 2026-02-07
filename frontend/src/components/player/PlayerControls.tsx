@@ -9,6 +9,7 @@ interface PlayerControlsProps {
   onResume: () => void;
   onInterrupt: () => void;
   onSetSpeed: (speed: number) => void;
+  onToggleVoice?: () => void;
 }
 
 const SPEEDS = [0.5, 1, 1.5, 2];
@@ -20,6 +21,7 @@ export default function PlayerControls({
   onResume,
   onInterrupt,
   onSetSpeed,
+  onToggleVoice,
 }: PlayerControlsProps) {
   const isPlaying = state.status === "playing";
   const isPaused = state.status === "paused";
@@ -80,6 +82,22 @@ export default function PlayerControls({
         ))}
       </div>
 
+      {/* Voice toggle */}
+      {onToggleVoice && (
+        <button
+          onClick={onToggleVoice}
+          className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors cursor-pointer ${
+            state.voiceEnabled
+              ? "bg-[var(--emerald)] text-white"
+              : "bg-[var(--cream-dark)] text-[var(--ink-tertiary)] hover:bg-[var(--border-strong)]"
+          }`}
+          aria-label={state.voiceEnabled ? "Mute voice" : "Enable voice"}
+          title={state.voiceEnabled ? "Mute" : "Unmute"}
+        >
+          {state.voiceEnabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
+        </button>
+      )}
+
       {/* Ask a question button */}
       {!isComplete && (
         <button
@@ -117,6 +135,40 @@ function PauseIcon() {
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
       <rect x="2.5" y="1.5" width="3" height="11" rx="0.5" fill="currentColor" />
       <rect x="8.5" y="1.5" width="3" height="11" rx="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function SpeakerOnIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path
+        d="M2 5v4h2l3-3v6l-3-3H2a1 1 0 01-1-1V6a1 1 0 011-1z"
+        fill="currentColor"
+      />
+      <path
+        d="M11.5 7a3.5 3.5 0 010 2.5M12.5 4a6 6 0 010 6"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SpeakerOffIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path
+        d="M2 5v4h2l3-3v6l-3-3H2a1 1 0 01-1-1V6a1 1 0 011-1z"
+        fill="currentColor"
+      />
+      <path
+        d="M12.5 3.5l-2 2m0 2l2 2M10.5 3.5l2 2m0 2l-2 2"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

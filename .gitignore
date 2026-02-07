@@ -30,6 +30,33 @@ build/
 *.egg-info/
 *.egg
 pip-log.txt
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info
+
+# Node
+.npm
+package-lock.json
+yarn.lock
 
 # Uploads
 uploads/
+
+# Audio cache
+audio_cache/
+
+# Generated files
+*.mp3
+*.wav
+
+# OS
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# Editor
+*.sublime-project
+*.sublime-workspace
