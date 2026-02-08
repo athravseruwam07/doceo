@@ -152,6 +152,7 @@ async def create_lesson(session_id: str) -> None:
             _schedule_background_audio_generation(session_id)
         return
 
+    logger.info("[LessonService] No existing steps, generating with Gemini...")
     from app.services.ai_service import analyze_problem
 
     result = await analyze_problem(
