@@ -1,4 +1,6 @@
 import asyncio
+import copy
+import json
 import logging
 from typing import AsyncGenerator
 
@@ -102,14 +104,63 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> list[dict]:
     return all_steps
 
 
+async def _generate_audio_in_background(session_id: str) -> None:
+    """Generate lesson narration audio asynchronously without blocking streaming."""
+    session = get_session(session_id)
+    if session is None:
+        return
+
+    if session.get("audio_status") == "in_progress":
+        return
+
+    steps = session.get("steps", [])
+    if not steps:
+        return
+
+    if _steps_have_audio(steps):
+        update_session(session_id, audio_status="complete")
+        return
+
+    update_session(session_id, audio_status="in_progress")
+    try:
+        # Work on a deep copy to avoid mutating objects while UI is streaming them.
+        steps_with_audio = await _enrich_steps_with_audio(copy.deepcopy(steps))
+        update_session(
+            session_id,
+            steps=steps_with_audio,
+            step_count=len(steps_with_audio),
+            audio_status="complete",
+        )
+    except Exception:
+        logger.exception("Background audio generation failed for session %s", session_id)
+        update_session(session_id, audio_status="failed")
+
+
+def _schedule_background_audio_generation(session_id: str) -> None:
+    """Queue background audio generation if needed."""
+    session = get_session(session_id)
+    if session is None:
+        return
+
+    status = session.get("audio_status")
+    if status in {"queued", "in_progress", "complete"}:
+        return
+
+    steps = session.get("steps", [])
+    if not steps or _steps_have_audio(steps):
+        return
+
+    update_session(session_id, audio_status="queued")
+    asyncio.create_task(_generate_audio_in_background(session_id))
+
+
 async def create_lesson(session_id: str) -> None:
-    """Analyze the problem, generate audio per narrate event, store in session.
+    """Analyze the problem and store steps quickly without blocking on audio.
 
     Flow:
     1. Use existing steps if available, otherwise call Gemini to generate them
-    2. For each narrate event, generate ElevenLabs audio (throttled to avoid 429s)
-    3. Replace narrate event duration with actual audio duration (keep original as fallback)
-    4. Store enriched steps in session
+    2. Store generated steps immediately so SSE can start quickly
+    3. Queue audio generation in background (non-blocking)
     """
     session = get_session(session_id)
     if session is None:
@@ -118,30 +169,37 @@ async def create_lesson(session_id: str) -> None:
     # Reuse existing steps if the session creation endpoint already generated them
     existing_steps = session.get("steps", [])
     if existing_steps and len(existing_steps) > 0:
-        print(f"[LessonService] Reusing {len(existing_steps)} existing steps, adding audio...")
-        result = {
-            "title": session.get("title", "Lesson"),
-            "subject": session.get("subject", "STEM"),
-            "steps": existing_steps,
-        }
-    else:
-        print("[LessonService] No existing steps, generating with Gemini...")
-        result = await analyze_problem(
-            problem_text=session.get("problem_text", ""),
-            image_b64=session.get("image_b64"),
+        logger.info("[LessonService] Reusing %s existing steps", len(existing_steps))
+        update_session(
+            session_id,
+            title=session.get("title", "Lesson"),
+            subject=session.get("subject", "STEM"),
+            steps=existing_steps,
+            step_count=len(existing_steps),
+            status="streaming",
+            audio_status="complete" if _steps_have_audio(existing_steps) else "pending",
         )
+        if not _steps_have_audio(existing_steps):
+            _schedule_background_audio_generation(session_id)
+        return
+
+    logger.info("[LessonService] No existing steps, generating with Gemini...")
+    result = await analyze_problem(
+        problem_text=session.get("problem_text", ""),
+        image_b64=session.get("image_b64"),
+    )
 
     all_steps = result.get("steps", [])
-    steps_with_audio = await _enrich_steps_with_audio(all_steps)
-
     update_session(
         session_id,
         title=result["title"],
         subject=result["subject"],
-        steps=steps_with_audio,
-        step_count=len(steps_with_audio),
+        steps=all_steps,
+        step_count=len(all_steps),
         status="streaming",
+        audio_status="pending",
     )
+    _schedule_background_audio_generation(session_id)
 
 
 async def stream_lesson_steps(session_id: str) -> AsyncGenerator[dict, None]:
@@ -152,14 +210,42 @@ async def stream_lesson_steps(session_id: str) -> AsyncGenerator[dict, None]:
 
     steps = session.get("steps", [])
 
-    # Generate audio if steps don't have it yet
-    if not steps or not _steps_have_audio(steps):
-        print(f"[LessonService] Steps need audio generation (have_steps={bool(steps)}, have_audio={_steps_have_audio(steps) if steps else False})")
-        await create_lesson(session_id)
+    # Send an immediate status event so SSE connection opens right away.
+    yield {
+        "event": "status",
+        "data": json.dumps({"state": "connected"}),
+    }
+
+    # Generate lesson structure first if needed (non-audio path for fast startup)
+    if not steps:
+        logger.info("[LessonService] Generating lesson steps for session %s", session_id)
+        lesson_task = asyncio.create_task(create_lesson(session_id))
+        elapsed_seconds = 0
+
+        # Keep stream active while lesson is being generated.
+        while not lesson_task.done():
+            await asyncio.sleep(2.0)
+            elapsed_seconds += 2
+            yield {
+                "event": "status",
+                "data": json.dumps(
+                    {
+                        "state": "generating",
+                        "elapsed_seconds": elapsed_seconds,
+                    }
+                ),
+            }
+
+        # Propagate exceptions from lesson generation if they occurred.
+        await lesson_task
         session = get_session(session_id)
         if session is None:
             return
         steps = session.get("steps", [])
+
+    # Never block stream on ElevenLabs audio generation.
+    if steps and not _steps_have_audio(steps):
+        _schedule_background_audio_generation(session_id)
 
     update_session(session_id, status="streaming")
 

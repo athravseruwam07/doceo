@@ -21,4 +21,4 @@ async def stream_lesson(session_id: str):
                 "data": item["data"],
             }
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(event_generator(), ping=10)

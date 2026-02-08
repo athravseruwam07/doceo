@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useUpload } from "@/hooks/useUpload";
 import { useTheme } from "@/hooks/useTheme";
@@ -40,10 +40,9 @@ const EXAMPLE_PROBLEMS = [
 const RECENT_PROBLEMS_KEY = "doceo-recent-problems";
 
 function getInitialRecentProblems(): string[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(RECENT_PROBLEMS_KEY);
-  if (!raw) return [];
   try {
+    const raw = localStorage.getItem(RECENT_PROBLEMS_KEY);
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as string[];
     return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
   } catch {
@@ -66,9 +65,11 @@ export default function Home() {
     submit,
   } = useUpload();
   const [mode, setMode] = useState<InputMode>("type");
-  const [recentProblems, setRecentProblems] = useState<string[]>(
-    getInitialRecentProblems
-  );
+  const [recentProblems, setRecentProblems] = useState<string[]>([]);
+
+  useEffect(() => {
+    setRecentProblems(getInitialRecentProblems());
+  }, []);
 
   const saveRecentProblem = (problem: string) => {
     const cleaned = problem.trim();

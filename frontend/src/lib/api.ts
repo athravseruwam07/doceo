@@ -88,3 +88,10 @@ export async function getExport(sessionId: string): Promise<Blob> {
 export function getLessonStreamUrl(sessionId: string): string {
   return `${BASE}/sessions/${sessionId}/lesson/stream`;
 }
+
+export function getVoiceStreamUrl(sessionId: string): string {
+  const backendUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const wsBase = backendUrl.replace(/^http/, "ws").replace(/\/$/, "");
+  return `${wsBase}/sessions/${sessionId}/voice/stream`;
+}

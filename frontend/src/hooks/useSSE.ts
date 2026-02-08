@@ -35,7 +35,10 @@ export function useSSE<T = unknown>(url: string | null): UseSSEResult<T> {
     const source = new EventSource(url);
     sourceRef.current = source;
 
-    source.onopen = () => setIsConnected(true);
+    source.onopen = () => {
+      setIsConnected(true);
+      setError(null);
+    };
 
     source.addEventListener("step", (e) => {
       try {
@@ -59,9 +62,9 @@ export function useSSE<T = unknown>(url: string | null): UseSSEResult<T> {
     });
 
     source.onerror = () => {
-      setError("Connection lost. The lesson may still be loading.");
       setIsConnected(false);
-      source.close();
+      // Let EventSource auto-reconnect instead of hard-closing on transient errors.
+      setError("Connection interrupted. Reconnecting...");
     };
 
     return cleanup;

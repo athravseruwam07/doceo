@@ -10,6 +10,10 @@ interface ChatSidebarProps {
   messages: ChatMessageType[];
   loading: boolean;
   onSend: (message: string) => void | Promise<void>;
+  onUserInteractionStart?: () => void;
+  onVoiceStart?: () => void;
+  onVoiceEnd?: () => void;
+  onVoiceTranscript?: (text: string, isFinal: boolean) => void;
   onClose?: () => void;
   isMobileOverlay?: boolean;
   isInterrupted?: boolean;
@@ -21,6 +25,10 @@ export default function ChatSidebar({
   messages,
   loading,
   onSend,
+  onUserInteractionStart,
+  onVoiceStart,
+  onVoiceEnd,
+  onVoiceTranscript,
   onClose,
   isMobileOverlay = false,
   isInterrupted = false,
@@ -117,7 +125,14 @@ export default function ChatSidebar({
       </div>
 
       {/* Input */}
-      <ChatInput onSend={onSend} disabled={loading} />
+      <ChatInput
+        onSend={onSend}
+        disabled={loading}
+        onUserInteractionStart={onUserInteractionStart}
+        onVoiceStart={onVoiceStart}
+        onVoiceEnd={onVoiceEnd}
+        onVoiceTranscript={onVoiceTranscript}
+      />
     </div>
   );
 }
