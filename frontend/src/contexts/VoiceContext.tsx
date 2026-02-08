@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useState, useCallback, useRef } from "react";
+import React, { createContext, useCallback, useState } from "react";
 import { AudioSyncPlayer } from "@/lib/audioPlayer";
 
 interface VoiceContextType {
@@ -16,34 +16,41 @@ export const VoiceContext = createContext<VoiceContextType | undefined>(
 );
 
 export function VoiceProvider({ children }: { children: React.ReactNode }) {
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const saved = localStorage.getItem("doceo-voice-enabled");
+    return saved === null ? true : saved === "true";
+  });
   const [playbackRate, setPlaybackRate] = useState(1);
-  const audioPlayerRef = useRef<AudioSyncPlayer | null>(null);
-
-  // Initialize audio player on first render
-  if (!audioPlayerRef.current) {
-    audioPlayerRef.current = new AudioSyncPlayer();
-  }
+  const [audioPlayer] = useState(() => new AudioSyncPlayer());
 
   const toggleVoice = useCallback(() => {
-    setEnabled((prev) => !prev);
-    // Save preference to localStorage
-    localStorage.setItem("doceo-voice-enabled", JSON.stringify(!enabled));
-  }, [enabled]);
+    setEnabled((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("doceo-voice-enabled", String(next));
+      }
+      if (!next) {
+        audioPlayer.pause();
+      }
+      return next;
+    });
+  }, [audioPlayer]);
 
-  const handleSetPlaybackRate = useCallback((rate: number) => {
-    setPlaybackRate(rate);
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.setSpeed(rate);
-    }
-  }, []);
+  const handleSetPlaybackRate = useCallback(
+    (rate: number) => {
+      setPlaybackRate(rate);
+      audioPlayer.setSpeed(rate);
+    },
+    [audioPlayer]
+  );
 
   return (
     <VoiceContext.Provider
       value={{
         enabled,
         toggleVoice,
-        audioPlayer: audioPlayerRef.current,
+        audioPlayer,
         playbackRate,
         setPlaybackRate: handleSetPlaybackRate,
       }}

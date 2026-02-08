@@ -24,7 +24,7 @@ export class AudioSyncPlayer {
    * Preload audio segment
    */
   async preloadSegment(eventId: string, audioUrl: string): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (!audioUrl) {
         resolve();
         return;
@@ -191,7 +191,6 @@ export class AudioSyncPlayer {
     this.pause();
     this.segments.forEach((segment) => {
       segment.audio.src = "";
-      segment.audio = null as any;
     });
     this.segments.clear();
     this.onSegmentEnd = null;

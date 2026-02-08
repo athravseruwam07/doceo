@@ -12,6 +12,7 @@ export interface LessonStep {
   narration?: string;
   audio_url?: string;
   audio_duration?: number;
+  events?: AnimationEvent[];
 }
 
 export interface LessonCompleteEvent {
@@ -35,18 +36,28 @@ export interface ChatMessage {
   narration?: string;
   audio_url?: string;
   audio_duration?: number;
+  events?: AnimationEvent[];
+  created_at?: string;
+}
+
+export interface ChatContextPayload {
+  currentStep?: number;
+  currentStepTitle?: string;
+  currentEventType?: AnimationEventType;
+  activeNarration?: string;
 }
 
 // ─── Animation Timeline Types ───
 
 export type AnimationEventType =
+  | "step_marker"
   | "narrate"
   | "write_equation"
   | "write_text"
   | "annotate"
   | "clear_section"
   | "pause"
-  | "step_marker";
+  | "transition";
 
 export interface AnimationEvent {
   id: string;
@@ -56,11 +67,13 @@ export interface AnimationEvent {
     text?: string;
     latex?: string;
     display?: boolean;
-    position?: "top" | "center" | "bottom";
+    position?: "top" | "center" | "bottom" | "side";
     annotationType?: "highlight" | "underline" | "circle" | "box";
     targetId?: string;
     stepNumber?: number;
     stepTitle?: string;
+    audioUrl?: string;
+    audioDuration?: number;
   };
 }
 

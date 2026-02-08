@@ -1,4 +1,4 @@
-import { LessonStep, AnimationEvent, AnimationEventType } from "./types";
+import { LessonStep, AnimationEvent } from "./types";
 
 let eventCounter = 0;
 

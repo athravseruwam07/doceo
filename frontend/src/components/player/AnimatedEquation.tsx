@@ -20,6 +20,7 @@ export default function AnimatedEquation({
 
   useEffect(() => {
     if (!isAnimating) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRevealPercent(100);
       return;
     }

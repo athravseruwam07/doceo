@@ -51,8 +51,8 @@ export default function LessonSummary({
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-6 py-10">
           {/* Header */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[var(--emerald-subtle)] mb-4">
+          <div className="text-center mb-8 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--paper)] p-6">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[var(--emerald-subtle)] mb-4 shadow-[var(--shadow-sm)]">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
                 <path
                   d="M9 12l2 2 4-4"
@@ -79,6 +79,9 @@ export default function LessonSummary({
             <Badge variant="emerald" className="mt-2">
               {subject}
             </Badge>
+            <p className="mt-3 text-[12px] text-[var(--ink-tertiary)] font-[family-name:var(--font-body)]">
+              You completed {Math.max(1, new Set(events.map((e) => e.payload.stepNumber).filter(Boolean)).size)} learning steps and reviewed {equations.length} key equations.
+            </p>
           </div>
 
           {/* Equation reference sheet */}

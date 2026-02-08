@@ -1,11 +1,12 @@
 "use client";
 
-import React, { createContext, useState, useEffect } from "react";
+import React, { createContext, useCallback, useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
 
 interface ThemeContextType {
   theme: Theme;
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
 }
 
@@ -13,42 +14,50 @@ export const ThemeContext = createContext<ThemeContextType | undefined>(
   undefined
 );
 
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+
+  const savedTheme = localStorage.getItem("doceo-theme");
+  if (savedTheme === "dark" || savedTheme === "light") {
+    return savedTheme;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function applyTheme(themeValue: Theme) {
+  const html = document.documentElement;
+  if (themeValue === "dark") {
+    html.setAttribute("data-theme", "dark");
+  } else {
+    html.removeAttribute("data-theme");
+  }
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
-  const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
-  // Load theme from localStorage on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem("doceo-theme") as Theme | null;
-    const prefersDark = window.matchMedia(
-      "(prefers-color-scheme: dark)"
-    ).matches;
+    applyTheme(theme);
+  }, [theme]);
 
-    const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
-    setTheme(initialTheme);
-    applyTheme(initialTheme);
-    setMounted(true);
+  const setThemeAndPersist = useCallback((nextTheme: Theme) => {
+    setTheme(nextTheme);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("doceo-theme", nextTheme);
+    }
   }, []);
 
-  const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    setTheme(newTheme);
-    localStorage.setItem("doceo-theme", newTheme);
-    applyTheme(newTheme);
-  };
+  const toggleTheme = useCallback(() => {
+    setThemeAndPersist(theme === "light" ? "dark" : "light");
+  }, [theme, setThemeAndPersist]);
 
-  const applyTheme = (themeValue: Theme) => {
-    const html = document.documentElement;
-    if (themeValue === "dark") {
-      html.setAttribute("data-theme", "dark");
-    } else {
-      html.removeAttribute("data-theme");
-    }
-  };
-
-  // Always render the provider to avoid hydration mismatch
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider
+      value={{ theme, setTheme: setThemeAndPersist, toggleTheme }}
+    >
       {children}
     </ThemeContext.Provider>
   );

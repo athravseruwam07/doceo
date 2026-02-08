@@ -6,6 +6,7 @@ import { createSession } from "@/lib/api";
 export function useUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
+  const [subjectHint, setSubjectHint] = useState<string>("General STEM");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,10 +26,14 @@ export function useUpload() {
         const formData = new FormData();
         formData.append("file", file);
         if (text.trim()) formData.append("problem_text", text.trim());
+        if (subjectHint.trim()) formData.append("subject_hint", subjectHint.trim());
         const res = await createSession(formData);
         sessionId = res.session_id;
       } else {
-        const res = await createSession({ problem_text: text.trim() });
+        const res = await createSession({
+          problem_text: text.trim(),
+          subject_hint: subjectHint.trim() || undefined,
+        });
         sessionId = res.session_id;
       }
 
@@ -39,13 +44,25 @@ export function useUpload() {
     } finally {
       setLoading(false);
     }
-  }, [file, text]);
+  }, [file, text, subjectHint]);
 
   const reset = useCallback(() => {
     setFile(null);
     setText("");
+    setSubjectHint("General STEM");
     setError(null);
   }, []);
 
-  return { file, setFile, text, setText, loading, error, submit, reset };
+  return {
+    file,
+    setFile,
+    text,
+    setText,
+    subjectHint,
+    setSubjectHint,
+    loading,
+    error,
+    submit,
+    reset,
+  };
 }
