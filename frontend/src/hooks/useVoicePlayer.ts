@@ -3,52 +3,55 @@
 import { useCallback, useContext } from "react";
 import { VoiceContext } from "@/contexts/VoiceContext";
 
-const noop = () => {};
-const noopSetRate = () => {};
-
 export function useVoicePlayer() {
   const context = useContext(VoiceContext);
 
+  // Extract values — use defaults when context is unavailable (SSR/outside provider)
   const enabled = context?.enabled ?? true;
-  const toggleVoice = context?.toggleVoice ?? noop;
+  const toggleVoice = context?.toggleVoice;
   const audioPlayer = context?.audioPlayer ?? null;
   const playbackRate = context?.playbackRate ?? 1;
-  const setPlaybackRate = context?.setPlaybackRate ?? noopSetRate;
+  const setPlaybackRate = context?.setPlaybackRate;
 
+  /**
+   * Preload audio for an upcoming narrate event
+   */
   const preloadAudio = useCallback(
     async (eventId: string, audioUrl: string | null | undefined) => {
-      if (!enabled || !audioPlayer || !audioUrl) return;
+      if (!audioPlayer || !audioUrl) return;
       try {
         await audioPlayer.preloadSegment(eventId, audioUrl);
       } catch (error) {
         console.error("Error preloading audio:", error);
       }
     },
-    [enabled, audioPlayer]
+    [audioPlayer]
   );
 
+  /**
+   * Play audio for a narrate event. Fire-and-forget — the animation player
+   * handles timing via its own setTimeout. This just plays the audio alongside.
+   */
   const playAudio = useCallback(
     async (
       eventId: string,
       audioUrl: string | null | undefined,
-      duration: number
+      _duration: number
     ) => {
       if (!enabled || !audioPlayer || !audioUrl) {
-        return new Promise<void>((resolve) => {
-          setTimeout(resolve, duration * 1000);
-        });
+        console.log(`[Voice] playAudio skipped: enabled=${enabled} player=${!!audioPlayer} url=${!!audioUrl}`);
+        return;
       }
 
+      console.log(`[Voice] playAudio called for ${eventId}: ${audioUrl}`);
+
       try {
-        if (!audioPlayer.getIsPlaying()) {
-          await audioPlayer.preloadSegment(eventId, audioUrl);
-        }
-        await audioPlayer.playSegment(eventId, duration);
+        // Preload if not already loaded
+        await audioPlayer.preloadSegment(eventId, audioUrl);
+        // Play — passes audioUrl as fallback for on-the-fly creation
+        await audioPlayer.playSegment(eventId, audioUrl);
       } catch (error) {
-        console.error("Error playing audio:", error);
-        return new Promise<void>((resolve) => {
-          setTimeout(resolve, duration * 1000);
-        });
+        console.error("[Voice] Error playing audio:", error);
       }
     },
     [enabled, audioPlayer]
@@ -66,28 +69,27 @@ export function useVoicePlayer() {
 
   const setSpeed = useCallback(
     (speed: number) => {
-      setPlaybackRate(speed);
+      if (setPlaybackRate) {
+        setPlaybackRate(speed);
+      }
     },
     [setPlaybackRate]
   );
 
-  const onAudioComplete = useCallback(
-    (callback: (eventId: string) => void) => {
-      if (!audioPlayer) return;
-      audioPlayer.onSegmentComplete(callback);
-    },
-    [audioPlayer]
-  );
+  const handleToggleVoice = useCallback(() => {
+    if (toggleVoice) {
+      toggleVoice();
+    }
+  }, [toggleVoice]);
 
   return {
     enabled,
-    toggleVoice,
+    toggleVoice: handleToggleVoice,
     playbackRate,
     preloadAudio,
     playAudio,
     pauseAudio,
     resumeAudio,
     setSpeed,
-    onAudioComplete,
   };
 }

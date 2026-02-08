@@ -1,4 +1,4 @@
-import { LessonStep, AnimationEvent } from "./types";
+import { LessonStep, AnimationEvent, AnimationEventType } from "./types";
 
 let eventCounter = 0;
 
@@ -15,14 +15,69 @@ function latexDuration(latex: string): number {
 }
 
 /**
+ * Convert a backend AnimationEvent (snake_case payload) into the
+ * frontend AnimationEvent format (camelCase payload).
+ */
+function convertBackendEvent(raw: Record<string, unknown>): AnimationEvent {
+  const payload = (raw.payload || {}) as Record<string, unknown>;
+  return {
+    id: raw.id as string,
+    type: raw.type as AnimationEventType,
+    duration: raw.duration as number,
+    payload: {
+      text: payload.text as string | undefined,
+      latex: payload.latex as string | undefined,
+      display: payload.display as boolean | undefined,
+      position: payload.position as "top" | "center" | "bottom" | undefined,
+      // snake_case → camelCase
+      annotationType: (payload.annotation_type || payload.annotationType) as
+        | "highlight"
+        | "underline"
+        | "circle"
+        | "box"
+        | undefined,
+      targetId: (payload.target_id || payload.targetId) as string | undefined,
+      stepNumber: (payload.step_number || payload.stepNumber) as
+        | number
+        | undefined,
+      stepTitle: (payload.step_title || payload.stepTitle) as
+        | string
+        | undefined,
+      audioUrl: (payload.audio_url || payload.audioUrl) as string | undefined,
+      audioDuration: (payload.audio_duration || payload.audioDuration) as
+        | number
+        | undefined,
+    },
+  };
+}
+
+/**
  * Converts a LessonStep array into a flat AnimationEvent timeline.
- * Each step produces: step_marker → narrate (title) → content events → math_blocks → pause
+ *
+ * If a step has an `events` array from the backend (AI-choreographed),
+ * those events are used directly (with snake_case → camelCase conversion).
+ * Otherwise falls back to algorithmically generating events from content.
  */
 export function stepsToTimeline(steps: LessonStep[]): AnimationEvent[] {
   eventCounter = 0;
   const events: AnimationEvent[] = [];
 
   for (const step of steps) {
+    // Check if backend provided granular events
+    if (step.events && step.events.length > 0) {
+      // Use backend-choreographed events directly
+      for (const rawEvent of step.events) {
+        const converted = convertBackendEvent(rawEvent as unknown as Record<string, unknown>);
+        if (converted.type === "narrate") {
+          console.log(`[Timeline] Narrate event ${converted.id}: audioUrl=${converted.payload.audioUrl || "NONE"}`);
+        }
+        events.push(converted);
+      }
+      continue;
+    }
+
+    // ── Fallback: algorithmically generate events from flat content ──
+
     // Step marker
     events.push({
       id: makeId(),
@@ -51,7 +106,6 @@ export function stepsToTimeline(steps: LessonStep[]): AnimationEvent[] {
 
     // Display math blocks that aren't already in content
     for (const mb of step.math_blocks) {
-      // Check if this latex was already emitted via $$...$$ in content
       const alreadyInContent = contentEvents.some(
         (e) => e.type === "write_equation" && e.payload.latex === mb.latex
       );

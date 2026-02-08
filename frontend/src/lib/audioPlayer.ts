@@ -1,5 +1,12 @@
 /**
- * AudioSyncPlayer - Manages audio playback with sync to animations
+ * AudioSyncPlayer - Manages audio playback synced to animation events.
+ *
+ * Key design decisions:
+ * - Preloaded segments are cached and never recreated
+ * - Preload has a timeout so it can't hang forever
+ * - play() handles autoplay policy by retrying on user interaction
+ * - If preload fails, playSegment falls back to on-the-fly Audio creation
+ * - All errors are gracefully handled (animation continues without audio)
  */
 
 export interface AudioSegment {
@@ -11,201 +18,266 @@ export interface AudioSegment {
 
 export class AudioSyncPlayer {
   private segments: Map<string, AudioSegment> = new Map();
+  private loadingSegments: Set<string> = new Set();
   private currentSegmentId: string | null = null;
   private isPlaying: boolean = false;
   private playbackRate: number = 1;
-  private onSegmentEnd: ((segmentId: string) => void) | null = null;
+  private audioUnlocked: boolean = false;
 
   constructor() {
-    // Initialize with no segments
+    // Try to unlock audio on any user interaction
+    this.setupAutoplayUnlock();
   }
 
   /**
-   * Preload audio segment
+   * Browsers block audio.play() until user interacts with the page.
+   * Listen for the first click/touch/keydown and play a silent buffer
+   * to unlock the audio context.
    */
-  async preloadSegment(eventId: string, audioUrl: string): Promise<void> {
-    return new Promise((resolve) => {
-      if (!audioUrl) {
-        resolve();
-        return;
+  private setupAutoplayUnlock(): void {
+    if (typeof window === "undefined") return;
+
+    const unlock = () => {
+      if (this.audioUnlocked) return;
+
+      // Try Web Audio API unlock first (more reliable)
+      try {
+        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+        ctx.resume().then(() => {
+          this.audioUnlocked = true;
+          console.log("[Audio] Web Audio context unlocked");
+          cleanup();
+        }).catch(() => {});
+      } catch {
+        // Fallback: play silent HTML audio
       }
 
+      // Also try HTML Audio unlock
+      const silent = new Audio();
+      silent.src =
+        "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRBqSAAAAAAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRBqSAAAAAAAAAAAAAAAAAAAA";
+      silent.volume = 0.01;
+      silent
+        .play()
+        .then(() => {
+          this.audioUnlocked = true;
+          silent.pause();
+          silent.src = "";
+          console.log("[Audio] HTML Audio unlocked");
+          cleanup();
+        })
+        .catch(() => {
+          // Still locked, will retry on next interaction
+        });
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("click", unlock);
+      window.removeEventListener("touchstart", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+
+    window.addEventListener("click", unlock, { once: false });
+    window.addEventListener("touchstart", unlock, { once: false });
+    window.addEventListener("keydown", unlock, { once: false });
+  }
+
+  /**
+   * Preload an audio segment. Cached — calling twice with the same eventId
+   * returns immediately if already loaded or loading.
+   */
+  async preloadSegment(eventId: string, audioUrl: string): Promise<void> {
+    if (!audioUrl) return;
+
+    // Already loaded — skip
+    const existing = this.segments.get(eventId);
+    if (existing && existing.loaded) return;
+
+    // Already loading — skip
+    if (this.loadingSegments.has(eventId)) return;
+    this.loadingSegments.add(eventId);
+
+    return new Promise((resolve) => {
       try {
         const audio = new Audio();
         audio.preload = "auto";
-        audio.crossOrigin = "anonymous";
 
-        const onCanPlay = () => {
-          const duration = audio.duration || 0;
+        const onLoaded = () => {
           this.segments.set(eventId, {
             url: audioUrl,
             audio,
             loaded: true,
-            duration,
+            duration: audio.duration || 0,
           });
+          this.loadingSegments.delete(eventId);
           cleanup();
+          console.log(`[Audio] Preloaded ${eventId} (${audio.duration?.toFixed(1)}s)`);
           resolve();
         };
 
-        const onError = (error: Event) => {
-          console.error(`Failed to preload audio for ${eventId}:`, error);
+        const onError = (e: Event) => {
+          const mediaError = audio.error;
+          console.warn(`[Audio] Failed to preload ${eventId}: code=${mediaError?.code} msg=${mediaError?.message}`, e);
+          this.loadingSegments.delete(eventId);
           cleanup();
-          resolve(); // Don't reject, allow playback to continue without audio
+          resolve(); // Don't block — animation continues without audio
         };
 
         const cleanup = () => {
-          audio.removeEventListener("canplay", onCanPlay);
+          audio.removeEventListener("canplaythrough", onLoaded);
+          audio.removeEventListener("canplay", onLoaded);
           audio.removeEventListener("error", onError);
+          clearTimeout(timeout);
         };
 
-        audio.addEventListener("canplay", onCanPlay, { once: true });
+        // Timeout: don't let preload hang forever (8 seconds max)
+        const timeout = setTimeout(() => {
+          // If we got some data, consider it loaded enough
+          if (audio.readyState >= 2) {
+            onLoaded();
+          } else {
+            console.warn(`[Audio] Preload timeout for ${eventId} (readyState=${audio.readyState})`);
+            this.loadingSegments.delete(eventId);
+            cleanup();
+            resolve();
+          }
+        }, 8000);
+
+        audio.addEventListener("canplaythrough", onLoaded, { once: true });
+        audio.addEventListener("canplay", onLoaded, { once: true });
         audio.addEventListener("error", onError, { once: true });
 
         audio.src = audioUrl;
         audio.load();
-      } catch (error) {
-        console.error(`Error preloading audio for ${eventId}:`, error);
-        resolve(); // Don't reject
+      } catch (err) {
+        console.warn(`[Audio] Exception in preloadSegment for ${eventId}:`, err);
+        this.loadingSegments.delete(eventId);
+        resolve();
       }
     });
   }
 
   /**
-   * Play a segment
+   * Play a preloaded segment. If not preloaded, creates Audio on-the-fly.
+   * Returns immediately — does NOT block for the full duration.
    */
-  async playSegment(eventId: string, duration: number): Promise<void> {
-    const segment = this.segments.get(eventId);
+  async playSegment(eventId: string, audioUrl?: string): Promise<void> {
+    let segment = this.segments.get(eventId);
+
+    // Fallback: if preload didn't work, create Audio on-the-fly
+    if ((!segment || !segment.loaded) && audioUrl) {
+      console.log(`[Audio] No preloaded segment for ${eventId}, creating on-the-fly`);
+      const audio = new Audio(audioUrl);
+      segment = { url: audioUrl, audio, loaded: true, duration: 0 };
+      this.segments.set(eventId, segment);
+    }
+
     if (!segment || !segment.loaded) {
-      // No audio available, just wait for duration
-      return new Promise((resolve) => {
-        setTimeout(resolve, duration * 1000);
-      });
+      console.warn(`[Audio] No segment and no URL for ${eventId}, skipping`);
+      return;
+    }
+
+    // Stop any currently playing segment
+    if (this.currentSegmentId && this.currentSegmentId !== eventId) {
+      const prev = this.segments.get(this.currentSegmentId);
+      if (prev) {
+        prev.audio.pause();
+      }
     }
 
     this.currentSegmentId = eventId;
     this.isPlaying = true;
 
-    return new Promise((resolve) => {
-      const audio = segment.audio;
-      audio.playbackRate = this.playbackRate;
-      audio.volume = 1.0;
+    const audio = segment.audio;
+    audio.playbackRate = this.playbackRate;
+    audio.volume = 1.0;
+    audio.currentTime = 0;
 
-      // Reset audio to start
-      audio.currentTime = 0;
-
-      const onEnded = () => {
-        cleanup();
-        this.isPlaying = false;
-        this.currentSegmentId = null;
-        if (this.onSegmentEnd) {
-          this.onSegmentEnd(eventId);
-        }
-        resolve();
-      };
-
-      const cleanup = () => {
-        audio.removeEventListener("ended", onEnded);
-      };
-
-      audio.addEventListener("ended", onEnded, { once: true });
-
-      // Start playback
-      audio.play().catch((error) => {
-        console.error("Error playing audio:", error);
-        cleanup();
-        resolve();
-      });
-
-      // Fallback: resolve after max duration + buffer
-      setTimeout(() => {
-        if (this.currentSegmentId === eventId && this.isPlaying) {
-          audio.pause();
-          cleanup();
-          this.isPlaying = false;
-          this.currentSegmentId = null;
-          resolve();
-        }
-      }, (duration + 0.5) * 1000);
-    });
+    try {
+      await audio.play();
+      console.log(`[Audio] Playing ${eventId}`);
+    } catch (err) {
+      // Autoplay blocked or other error — log but don't crash
+      console.warn(`[Audio] play() blocked for ${eventId}:`, err);
+      this.isPlaying = false;
+      this.currentSegmentId = null;
+    }
   }
 
   /**
-   * Pause all audio
+   * Pause current audio
    */
   pause(): void {
+    if (this.currentSegmentId) {
+      const segment = this.segments.get(this.currentSegmentId);
+      if (segment) {
+        segment.audio.pause();
+      }
+    }
     this.isPlaying = false;
-    this.segments.forEach((segment) => {
-      segment.audio.pause();
-    });
   }
 
   /**
-   * Resume current segment
+   * Resume current segment from where it left off
    */
   resume(): void {
     if (this.currentSegmentId) {
       const segment = this.segments.get(this.currentSegmentId);
       if (segment && segment.loaded) {
         this.isPlaying = true;
-        segment.audio.play().catch((error) => {
-          console.error("Error resuming audio:", error);
+        segment.audio.play().catch(() => {
+          // Silently handle if resume fails
         });
       }
     }
   }
 
   /**
-   * Set playback speed
+   * Set playback speed for current and future segments
    */
   setSpeed(speed: number): void {
     this.playbackRate = Math.max(0.5, Math.min(2, speed));
-    this.segments.forEach((segment) => {
-      segment.audio.playbackRate = this.playbackRate;
-    });
-  }
-
-  /**
-   * Get current time of active segment
-   */
-  getCurrentTime(): number {
+    // Update currently playing audio immediately
     if (this.currentSegmentId) {
       const segment = this.segments.get(this.currentSegmentId);
       if (segment) {
-        return segment.audio.currentTime;
+        segment.audio.playbackRate = this.playbackRate;
       }
+    }
+  }
+
+  getCurrentTime(): number {
+    if (this.currentSegmentId) {
+      const segment = this.segments.get(this.currentSegmentId);
+      if (segment) return segment.audio.currentTime;
     }
     return 0;
   }
 
-  /**
-   * Set callback for segment end
-   */
   onSegmentComplete(callback: (segmentId: string) => void): void {
-    this.onSegmentEnd = callback;
+    // Not used in current architecture — animation timing is separate
+    void callback;
   }
 
-  /**
-   * Cleanup and destroy
-   */
   destroy(): void {
     this.pause();
     this.segments.forEach((segment) => {
+      segment.audio.pause();
       segment.audio.src = "";
     });
     this.segments.clear();
-    this.onSegmentEnd = null;
+    this.loadingSegments.clear();
   }
 
-  /**
-   * Check if currently playing
-   */
   getIsPlaying(): boolean {
     return this.isPlaying;
   }
 
-  /**
-   * Get playback rate
-   */
   getPlaybackRate(): number {
     return this.playbackRate;
   }

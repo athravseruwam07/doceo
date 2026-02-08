@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LessonStep,
@@ -44,10 +44,14 @@ export default function PlayerShell({
   const [chatOpen, setChatOpen] = useState(false);
 
   const events = useMemo(() => stepsToTimeline(steps), [steps]);
-
   const player = useAnimationPlayer(events);
   const { theme, toggleTheme } = useTheme();
   const voice = useVoicePlayer();
+
+  // Track which narrate event we last started playing audio for
+  const lastPlayedEventIdRef = useRef<string | null>(null);
+  // Track player status to detect pause/resume transitions
+  const prevStatusRef = useRef(player.state.status);
 
   // Auto-play when events first become available
   useEffect(() => {
@@ -56,15 +60,87 @@ export default function PlayerShell({
     }
   }, [events.length, player.state.status, player.play, player]);
 
-  // Get current narration text
+  // ─── Voice: Play audio when a narrate event becomes active ───
+  const voiceEnabled = voice.enabled;
+  const voicePlayAudio = voice.playAudio;
+  useEffect(() => {
+    const event = player.activeEvent;
+    if (!event) return;
+    if (!voiceEnabled) return;
+    if (event.type !== "narrate") return;
+    if (!event.payload.audioUrl) {
+      console.log(`[PlayerShell] Narrate event ${event.id} has no audioUrl`);
+      return;
+    }
+    if (event.id === lastPlayedEventIdRef.current) return;
+
+    lastPlayedEventIdRef.current = event.id;
+    console.log(`[PlayerShell] Playing audio for narrate event ${event.id}: ${event.payload.audioUrl}`);
+
+    // Fire and forget — animation timing is driven by the player's setTimeout,
+    // which already uses the real audio duration set by the backend.
+    voicePlayAudio(
+      event.id,
+      event.payload.audioUrl,
+      event.payload.audioDuration || event.duration / 1000
+    );
+  }, [player.activeEvent, voiceEnabled, voicePlayAudio]);
+
+  // ─── Voice: Preload upcoming narrate events ───
+  const voicePreloadAudio = voice.preloadAudio;
+  useEffect(() => {
+    if (!voiceEnabled) return;
+    const currentIdx = player.state.currentEventIndex;
+    if (currentIdx < 0) return;
+
+    let preloaded = 0;
+    for (let i = currentIdx + 1; i < events.length && preloaded < 3; i++) {
+      const ev = events[i];
+      if (ev.type === "narrate" && ev.payload.audioUrl) {
+        voicePreloadAudio(ev.id, ev.payload.audioUrl);
+        preloaded++;
+      }
+    }
+  }, [player.state.currentEventIndex, voiceEnabled, voicePreloadAudio, events]);
+
+  // ─── Voice: Sync pause/resume with animation player ───
+  const voicePauseAudio = voice.pauseAudio;
+  const voiceResumeAudio = voice.resumeAudio;
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    const currStatus = player.state.status;
+    prevStatusRef.current = currStatus;
+
+    // Animation paused/interrupted → pause audio
+    if (
+      prevStatus === "playing" &&
+      (currStatus === "paused" || currStatus === "interrupted")
+    ) {
+      voicePauseAudio();
+    }
+
+    // Animation resumed → resume audio
+    if (
+      (prevStatus === "paused" || prevStatus === "interrupted") &&
+      currStatus === "playing"
+    ) {
+      voiceResumeAudio();
+    }
+  }, [player.state.status, voicePauseAudio, voiceResumeAudio]);
+
+  // ─── Voice: Sync playback speed ───
+  const voiceSetSpeed = voice.setSpeed;
+  useEffect(() => {
+    voiceSetSpeed(player.state.speed);
+  }, [player.state.speed, voiceSetSpeed]);
+
+  // Get current narration text for display
   const narration = useMemo(() => {
-    // Find the latest narrate event in visibleEvents
     for (let i = player.visibleEvents.length - 1; i >= 0; i--) {
       if (player.visibleEvents[i].type === "narrate") {
         return player.visibleEvents[i].payload.text ?? "";
       }
     }
-    // Check active event
     if (player.activeEvent?.type === "narrate") {
       return player.activeEvent.payload.text ?? "";
     }
@@ -86,9 +162,9 @@ export default function PlayerShell({
   }, [messages]);
 
   // Keyboard shortcuts
+  const voiceToggle = voice.toggleVoice;
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't capture if user is typing in chat
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
@@ -116,15 +192,16 @@ export default function PlayerShell({
         }
       }
 
-      if ((e.key === "m" || e.key === "M") && !e.metaKey && !e.ctrlKey) {
+      // M key toggles voice mute/unmute
+      if (e.code === "KeyM") {
         e.preventDefault();
-        voice.toggleVoice();
+        voiceToggle();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [player, chatOpen, voice]);
+  }, [player, chatOpen, voiceToggle]);
 
   const handleInterrupt = useCallback(() => {
     player.interrupt();
