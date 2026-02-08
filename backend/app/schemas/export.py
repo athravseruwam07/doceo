@@ -7,3 +7,5 @@ class ExportResponse(BaseModel):
     subject: str
     steps: list
     chat_log: list
+    exam_materials: list = []
+    exam_cram: dict | None = None

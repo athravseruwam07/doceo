@@ -34,6 +34,17 @@ export interface SessionResponse {
   steps?: LessonStep[];
 }
 
+export interface SessionHistoryItem {
+  session_id: string;
+  title: string;
+  subject: string;
+  problem_text?: string;
+  status: string;
+  step_count: number;
+  updated_at?: string;
+  created_at?: string;
+}
+
 export interface ChatMessage {
   role: "user" | "tutor";
   message: string;
@@ -51,6 +62,48 @@ export interface ChatContextPayload {
   currentStepTitle?: string;
   currentEventType?: string;
   activeNarration?: string;
+}
+
+export interface ExamCramMaterialSummary {
+  name: string;
+  source_type: "text" | "upload";
+  char_count: number;
+}
+
+export interface ExamCramPrioritizedTopic {
+  topic: string;
+  likelihood: number;
+  why: string;
+  evidence: string[];
+  study_actions: string[];
+}
+
+export interface ExamCramFocusedLesson {
+  title: string;
+  objective: string;
+  key_points: string[];
+  estimated_minutes: number;
+}
+
+export interface ExamCramPracticeQuestion {
+  question: string;
+  difficulty: "easy" | "medium" | "hard";
+  concept: string;
+  answer_outline: string;
+}
+
+export interface ExamCramResponse {
+  session_id: string;
+  subject: string;
+  exam_name?: string;
+  source_count: number;
+  generated_at: string;
+  top_terms: string[];
+  recurring_patterns: string[];
+  prioritized_topics: ExamCramPrioritizedTopic[];
+  focused_lessons: ExamCramFocusedLesson[];
+  practice_questions: ExamCramPracticeQuestion[];
+  materials: ExamCramMaterialSummary[];
 }
 
 export type VoiceStatus =

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { ChatContextPayload, LessonStep, ChatMessage as ChatMessageType, TimelineSegment, VoiceStatus } from "@/lib/types";
 import { eventsToSegments, stepsToSegments } from "@/lib/timeline";
 import { inferCurrentBoardPage, planInterruptionSegments, planSegmentsForBoard } from "@/lib/boardPlan";
@@ -504,11 +505,22 @@ export default function PlayerShell({
 
   return (
     <div className="h-screen flex flex-col bg-[var(--cream)]">
+      <div className="mx-3 mt-3 mb-0 z-30 inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--paper)]/90 px-2 py-1.5 backdrop-blur-sm shadow-[var(--shadow-sm)]">
+        <Link href="/" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
+          Home
+        </Link>
+        <Link href="/exam-cram" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
+          Cram
+        </Link>
+        <Link href="/history" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
+          History
+        </Link>
+      </div>
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
         <motion.div className="relative flex-1 p-3 overflow-hidden">
           {voiceNotice && (
-            <div className="absolute top-[52px] right-4 z-20 max-w-[320px] rounded-xl border border-[var(--error)]/35 bg-[var(--paper)]/96 px-3 py-2 text-[12px] text-[var(--error)] shadow-[var(--shadow-sm)] backdrop-blur-sm">
+            <div className="absolute top-3 right-4 z-20 max-w-[320px] rounded-xl border border-[var(--error)]/35 bg-[var(--paper)]/96 px-3 py-2 text-[12px] text-[var(--error)] shadow-[var(--shadow-sm)] backdrop-blur-sm">
               {voiceNotice}
             </div>
           )}

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useCallback, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 import { useUpload } from "@/hooks/useUpload";
 import { useTheme } from "@/hooks/useTheme";
 import Spinner from "@/components/ui/Spinner";
@@ -87,6 +88,24 @@ export default function Home() {
           Doceo
         </span>
         <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="px-3 py-1.5 rounded-md border border-[var(--border)] text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)] hover:bg-[var(--cream-dark)] transition-colors font-[family-name:var(--font-body)]"
+          >
+            Home
+          </Link>
+          <Link
+            href="/exam-cram"
+            className="px-3 py-1.5 rounded-md border border-[var(--border)] text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)] hover:bg-[var(--cream-dark)] transition-colors font-[family-name:var(--font-body)]"
+          >
+            Exam Cram
+          </Link>
+          <Link
+            href="/history"
+            className="px-3 py-1.5 rounded-md border border-[var(--border)] text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)] hover:bg-[var(--cream-dark)] transition-colors font-[family-name:var(--font-body)]"
+          >
+            History
+          </Link>
           <button
             onClick={toggleTheme}
             className="p-2 rounded-md hover:bg-[var(--cream-dark)] transition-colors cursor-pointer"
@@ -122,8 +141,8 @@ export default function Home() {
               Learn step by step
             </h1>
             <p className="text-[var(--ink-secondary)] text-[16px] leading-relaxed max-w-md mx-auto font-[family-name:var(--font-body)] font-light">
-              Type a STEM problem or paste a screenshot. Doceo breaks it down on
-              a whiteboard and walks you through every step.
+              Type a STEM problem or paste a screenshot. Doceo turns it into an
+              interactive walkthrough and explains every step clearly.
             </p>
           </div>
 
