@@ -1,10 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import { useUpload } from "@/hooks/useUpload";
 import { useTheme } from "@/hooks/useTheme";
+import {
+  createCourse,
+  deleteCourse,
+  listCourseLessons,
+  listCourseMaterials,
+  listCourses,
+  uploadCourseMaterial,
+} from "@/lib/api";
+import { CourseLesson, CourseMaterial, CourseSummary } from "@/lib/types";
 import UploadZone from "@/components/upload/UploadZone";
 import TextInputArea from "@/components/upload/TextInputArea";
 import UploadPreview from "@/components/upload/UploadPreview";
@@ -38,17 +47,57 @@ const EXAMPLE_PROBLEMS = [
 ];
 
 const RECENT_PROBLEMS_KEY = "doceo-recent-problems";
+const RECENT_PROBLEMS_EVENT = "doceo-recent-problems-change";
 
-function getInitialRecentProblems(): string[] {
-  if (typeof window === "undefined") return [];
+const EMPTY_RECENT_PROBLEMS: string[] = [];
+let recentProblemsRawCache: string | null = null;
+let recentProblemsSnapshotCache: string[] = EMPTY_RECENT_PROBLEMS;
+
+function getRecentProblemsSnapshot(): string[] {
+  if (typeof window === "undefined") return EMPTY_RECENT_PROBLEMS;
+
   const raw = localStorage.getItem(RECENT_PROBLEMS_KEY);
-  if (!raw) return [];
+  if (raw === recentProblemsRawCache) {
+    return recentProblemsSnapshotCache;
+  }
+
+  recentProblemsRawCache = raw;
+  if (!raw) {
+    recentProblemsSnapshotCache = EMPTY_RECENT_PROBLEMS;
+    return recentProblemsSnapshotCache;
+  }
+
   try {
     const parsed = JSON.parse(raw) as string[];
-    return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+    recentProblemsSnapshotCache = Array.isArray(parsed)
+      ? parsed.slice(0, 5)
+      : EMPTY_RECENT_PROBLEMS;
   } catch {
-    return [];
+    recentProblemsSnapshotCache = EMPTY_RECENT_PROBLEMS;
   }
+
+  return recentProblemsSnapshotCache;
+}
+
+function getRecentProblemsServerSnapshot(): string[] {
+  return EMPTY_RECENT_PROBLEMS;
+}
+
+function subscribeRecentProblems(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === RECENT_PROBLEMS_KEY) listener();
+  };
+  const handleChange = () => listener();
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(RECENT_PROBLEMS_EVENT, handleChange);
+
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(RECENT_PROBLEMS_EVENT, handleChange);
+  };
 }
 
 export default function Home() {
@@ -61,24 +110,205 @@ export default function Home() {
     setText,
     subjectHint,
     setSubjectHint,
+    courseId,
+    setCourseId,
     loading,
     error,
     submit,
   } = useUpload();
   const [mode, setMode] = useState<InputMode>("type");
-  const [recentProblems, setRecentProblems] = useState<string[]>(
-    getInitialRecentProblems
+  const recentProblems = useSyncExternalStore(
+    subscribeRecentProblems,
+    getRecentProblemsSnapshot,
+    getRecentProblemsServerSnapshot
   );
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [materials, setMaterials] = useState<CourseMaterial[]>([]);
+  const [lessons, setLessons] = useState<CourseLesson[]>([]);
+  const [newCourseLabel, setNewCourseLabel] = useState("");
+  const [notesFile, setNotesFile] = useState<File | null>(null);
+  const [coursesLoading, setCoursesLoading] = useState(false);
+  const [materialsLoading, setMaterialsLoading] = useState(false);
+  const [lessonsLoading, setLessonsLoading] = useState(false);
+  const [notesUploading, setNotesUploading] = useState(false);
+  const [courseError, setCourseError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCoursesLoading(true);
+    listCourses()
+      .then((items) => {
+        if (cancelled) return;
+        setCourses(items);
+        setCourseError(null);
+        setCourseId((current) =>
+          !current && items.length > 0 ? items[0].course_id : current
+        );
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCourseError(err instanceof Error ? err.message : "Failed to load courses");
+      })
+      .finally(() => {
+        if (!cancelled) setCoursesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setCourseId]);
+
+  useEffect(() => {
+    if (!courseId) {
+      setMaterials([]);
+      setLessons([]);
+      return;
+    }
+    let cancelled = false;
+    setMaterialsLoading(true);
+    setLessonsLoading(true);
+    Promise.all([listCourseMaterials(courseId), listCourseLessons(courseId)])
+      .then(([materialsItems, lessonItems]) => {
+        if (!cancelled) {
+          setMaterials(materialsItems);
+          setLessons(lessonItems);
+          setCourseError(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCourseError(
+            err instanceof Error ? err.message : "Failed to load course materials"
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setMaterialsLoading(false);
+          setLessonsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId]);
+
+  const refreshCourses = async (preferredCourseId?: string) => {
+    const items = await listCourses();
+    setCourses(items);
+    const hasPreferred =
+      !!preferredCourseId &&
+      items.some((course) => course.course_id === preferredCourseId);
+    const hasCurrent = !!courseId && items.some((course) => course.course_id === courseId);
+    const nextCourseId = hasPreferred
+      ? (preferredCourseId as string)
+      : hasCurrent
+        ? courseId
+        : (items[0]?.course_id ?? "");
+    setCourseId(nextCourseId);
+    return nextCourseId;
+  };
+
+  const refreshMaterials = async (selectedCourseId: string) => {
+    if (!selectedCourseId) return;
+    const items = await listCourseMaterials(selectedCourseId);
+    setMaterials(items);
+  };
+
+  const refreshLessons = async (selectedCourseId: string) => {
+    if (!selectedCourseId) return;
+    const items = await listCourseLessons(selectedCourseId);
+    setLessons(items);
+  };
+
+  const handleCreateCourse = async () => {
+    const label = newCourseLabel.trim();
+    if (!label) return;
+
+    setCourseError(null);
+    try {
+      const created = await createCourse(label);
+      setNewCourseLabel("");
+      const nextCourseId = await refreshCourses(created.course_id);
+      if (nextCourseId) {
+        await Promise.all([refreshMaterials(nextCourseId), refreshLessons(nextCourseId)]);
+      } else {
+        setMaterials([]);
+        setLessons([]);
+      }
+    } catch (err) {
+      setCourseError(err instanceof Error ? err.message : "Failed to create course");
+    }
+  };
+
+  const handleUploadNotes = async () => {
+    if (!courseId || !notesFile) return;
+
+    setCourseError(null);
+    setNotesUploading(true);
+    try {
+      await uploadCourseMaterial(courseId, notesFile);
+      setNotesFile(null);
+      const nextCourseId = await refreshCourses(courseId);
+      if (nextCourseId) {
+        await Promise.all([refreshMaterials(nextCourseId), refreshLessons(nextCourseId)]);
+      }
+    } catch (err) {
+      setCourseError(err instanceof Error ? err.message : "Failed to upload notes");
+    } finally {
+      setNotesUploading(false);
+    }
+  };
+
+  const handleDeleteCourse = async (course: CourseSummary) => {
+    if (typeof window !== "undefined") {
+      const shouldDelete = window.confirm(
+        `Delete "${course.label}" and all notes in it? This cannot be undone.`
+      );
+      if (!shouldDelete) return;
+    }
+
+    setCourseError(null);
+    try {
+      await deleteCourse(course.course_id);
+      setNotesFile(null);
+      const nextCourseId = await refreshCourses();
+      if (nextCourseId) {
+        await Promise.all([refreshMaterials(nextCourseId), refreshLessons(nextCourseId)]);
+      } else {
+        setMaterials([]);
+        setLessons([]);
+      }
+    } catch (err) {
+      setCourseError(err instanceof Error ? err.message : "Failed to delete course");
+    }
+  };
+
+  const formatLessonDate = (rawDate: string) => {
+    const date = new Date(rawDate);
+    if (Number.isNaN(date.getTime())) return "Saved lesson";
+    return date.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
 
   const saveRecentProblem = (problem: string) => {
     const cleaned = problem.trim();
     if (!cleaned || typeof window === "undefined") return;
+
     const next = [cleaned, ...recentProblems.filter((p) => p !== cleaned)].slice(
       0,
       5
     );
-    setRecentProblems(next);
-    localStorage.setItem(RECENT_PROBLEMS_KEY, JSON.stringify(next));
+    const serialized = JSON.stringify(next);
+    recentProblemsRawCache = serialized;
+    recentProblemsSnapshotCache = next;
+    localStorage.setItem(RECENT_PROBLEMS_KEY, serialized);
+    window.dispatchEvent(new Event(RECENT_PROBLEMS_EVENT));
   };
 
   const handleSubmit = async () => {
@@ -91,6 +321,7 @@ export default function Home() {
   };
 
   const hasInput = !!file || text.trim().length > 0;
+  const selectedCourse = courses.find((course) => course.course_id === courseId) || null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -135,15 +366,85 @@ export default function Home() {
       </nav>
 
       {/* Hero + Input */}
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
+      <main className="flex-1 px-4 py-12">
         <motion.div
-          className="w-full max-w-xl"
+          className="mx-auto w-full max-w-6xl grid gap-6 lg:grid-cols-[280px_1fr]"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         >
+          <aside className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--paper)] p-4 h-fit lg:sticky lg:top-6">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[14px] font-semibold text-[var(--ink)] font-[family-name:var(--font-heading)]">
+                Course Labels
+              </p>
+              {coursesLoading && (
+                <span className="text-[11px] text-[var(--ink-tertiary)]">Loading...</span>
+              )}
+            </div>
+            <p className="mt-1 text-[12px] text-[var(--ink-tertiary)]">
+              Select a course from this panel and start a lesson with its notes context.
+            </p>
+
+            <div className="mt-3 max-h-[300px] overflow-y-auto space-y-2 pr-1">
+              {courses.length === 0 && (
+                <p className="text-[12px] text-[var(--ink-faint)]">
+                  No course labels yet. Create one below.
+                </p>
+              )}
+              {courses.map((course) => {
+                const isSelected = course.course_id === courseId;
+                return (
+                  <div
+                    key={course.course_id}
+                    className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--paper-warm)] p-1.5"
+                  >
+                    <button
+                      onClick={() => setCourseId(course.course_id)}
+                      className={`flex-1 text-left rounded-[var(--radius-sm)] px-2 py-1.5 text-[12px] transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-[var(--emerald)] text-white"
+                          : "text-[var(--ink-secondary)] hover:bg-[var(--cream-dark)]"
+                      }`}
+                      title={`${course.label} (${course.material_count} files)`}
+                    >
+                      <span className="block truncate">{course.label}</span>
+                      <span className={`block text-[10px] ${isSelected ? "text-white/80" : "text-[var(--ink-faint)]"}`}>
+                        {course.material_count} files
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCourse(course)}
+                      className="px-2 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] text-[var(--ink-faint)] hover:text-[var(--error)] hover:border-[var(--error)] transition-colors cursor-pointer"
+                      title={`Delete ${course.label}`}
+                      aria-label={`Delete ${course.label}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <input
+                value={newCourseLabel}
+                onChange={(e) => setNewCourseLabel(e.target.value)}
+                placeholder="New course label"
+                className="flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--paper-warm)] px-3 py-2 text-[13px]"
+              />
+              <button
+                onClick={handleCreateCourse}
+                className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--emerald)] text-white text-[12px] hover:bg-[var(--emerald-light)] transition-colors cursor-pointer"
+              >
+                Add
+              </button>
+            </div>
+          </aside>
+
+          <div>
           {/* Heading */}
-          <div className="mb-10 text-center">
+          <div className="mb-10 text-center lg:text-left">
             <h1 className="font-[family-name:var(--font-heading)] text-[clamp(32px,5vw,48px)] font-bold leading-[1.1] text-[var(--ink)] mb-3">
               Learn step by step
             </h1>
@@ -166,6 +467,122 @@ export default function Home() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Course notes library */}
+          <div className="mb-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--paper)] p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <p className="text-[14px] font-semibold text-[var(--ink)] font-[family-name:var(--font-heading)]">
+                  Course Notes Library
+                </p>
+                <p className="text-[12px] text-[var(--ink-tertiary)] font-[family-name:var(--font-body)]">
+                  Upload notes by class (Math, Science, etc.) and personalize tutoring.
+                  Large PDFs are supported (up to 120 MB) and may take longer to process.
+                </p>
+              </div>
+              {selectedCourse ? (
+                <span className="text-[11px] rounded-full bg-[var(--emerald-subtle)] text-[var(--emerald)] px-2 py-1">
+                  Selected: {selectedCourse.label}
+                </span>
+              ) : (
+                <span className="text-[11px] text-[var(--ink-faint)]">
+                  Select a course label on the left
+                </span>
+              )}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <input
+                type="file"
+                accept=".txt,.md,.pdf,.docx"
+                onChange={(e) => setNotesFile(e.target.files?.[0] ?? null)}
+                disabled={notesUploading}
+                className="text-[12px] text-[var(--ink-tertiary)] file:mr-3 file:px-3 file:py-1.5 file:rounded-md file:border file:border-[var(--border)] file:bg-[var(--paper-warm)]"
+              />
+              <button
+                onClick={handleUploadNotes}
+                disabled={!courseId || !notesFile || notesUploading}
+                className="px-3 py-2 rounded-[var(--radius-md)] border border-[var(--emerald)] text-[var(--emerald)] text-[12px] hover:bg-[var(--emerald-subtle)] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {notesUploading ? "Uploading..." : "Upload Notes"}
+              </button>
+            </div>
+
+            {!courseId && (
+              <p className="mt-2 text-[11px] text-[var(--ink-faint)]">
+                Choose a course label in the left panel, then upload notes here.
+              </p>
+            )}
+
+            {materialsLoading && (
+              <p className="mt-3 text-[12px] text-[var(--ink-tertiary)]">Loading materials...</p>
+            )}
+
+            {materials.length > 0 && (
+              <div className="mt-3 max-h-[130px] overflow-y-auto space-y-1.5">
+                {materials.map((material) => (
+                  <div
+                    key={material.material_id}
+                    className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--paper-warm)] px-2.5 py-1.5"
+                  >
+                    <p className="text-[12px] text-[var(--ink-secondary)] font-medium">
+                      {material.filename}
+                    </p>
+                    <p className="text-[11px] text-[var(--ink-faint)]">
+                      {material.chunk_count} chunks · {material.char_count} chars
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {lessonsLoading && (
+              <p className="mt-3 text-[12px] text-[var(--ink-tertiary)]">
+                Loading saved lessons...
+              </p>
+            )}
+
+            {lessons.length > 0 && (
+              <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--paper-warm)] p-3">
+                <p className="text-[12px] font-semibold text-[var(--ink)] mb-2">
+                  Previous lessons for this course
+                </p>
+                <div className="max-h-[180px] overflow-y-auto space-y-1.5">
+                  {lessons.map((lesson) => (
+                    <button
+                      key={lesson.session_id}
+                      onClick={() => router.push(`/lesson/${lesson.session_id}`)}
+                      className="w-full text-left rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--paper)] px-2.5 py-2 hover:bg-[var(--cream-dark)] transition-colors cursor-pointer"
+                      title={lesson.problem_preview || lesson.title}
+                    >
+                      <p className="text-[12px] text-[var(--ink)] font-medium truncate">
+                        {lesson.title}
+                      </p>
+                      <p className="text-[11px] text-[var(--ink-faint)]">
+                        {lesson.subject} • {lesson.step_count} steps •{" "}
+                        {formatLessonDate(lesson.created_at)}
+                      </p>
+                      {lesson.problem_preview && (
+                        <p className="text-[11px] text-[var(--ink-tertiary)] truncate">
+                          {lesson.problem_preview}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {courseId && !lessonsLoading && lessons.length === 0 && (
+              <p className="mt-3 text-[11px] text-[var(--ink-faint)]">
+                No saved lessons for this course yet. Start a lesson and it will appear here.
+              </p>
+            )}
+
+            {courseError && (
+              <p className="mt-3 text-[12px] text-[var(--error)]">{courseError}</p>
+            )}
           </div>
 
           {/* Mode tabs */}
@@ -285,6 +702,7 @@ export default function Home() {
                 </div>
               </div>
             )}
+          </div>
           </div>
         </motion.div>
       </main>

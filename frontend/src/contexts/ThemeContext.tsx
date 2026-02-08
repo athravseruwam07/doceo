@@ -1,6 +1,11 @@
 "use client";
 
-import React, { createContext, useCallback, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useEffect,
+  useSyncExternalStore,
+} from "react";
 
 type Theme = "light" | "dark";
 
@@ -14,6 +19,22 @@ export const ThemeContext = createContext<ThemeContextType | undefined>(
   undefined
 );
 
+const THEME_STORAGE_KEY = "doceo-theme";
+const THEME_EVENT = "doceo-theme-change";
+
+function getPreferredTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+
+  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  if (savedTheme === "dark" || savedTheme === "light") {
+    return savedTheme;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
 function applyTheme(themeValue: Theme) {
   const html = document.documentElement;
   if (themeValue === "dark") {
@@ -23,30 +44,41 @@ function applyTheme(themeValue: Theme) {
   }
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Always start with "light" to match SSR — hydrate real preference in useEffect
-  const [theme, setTheme] = useState<Theme>("light");
+function subscribeTheme(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("doceo-theme");
-    let resolved: Theme = "light";
-    if (savedTheme === "dark" || savedTheme === "light") {
-      resolved = savedTheme;
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      resolved = "dark";
-    }
-    setTheme(resolved);
-    applyTheme(resolved);
-  }, []);
+  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY) listener();
+  };
+  const handleThemeChange = () => listener();
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(THEME_EVENT, handleThemeChange);
+  mediaQuery.addEventListener("change", handleThemeChange);
+
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(THEME_EVENT, handleThemeChange);
+    mediaQuery.removeEventListener("change", handleThemeChange);
+  };
+}
+
+function getServerTheme(): Theme {
+  return "light";
+}
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const theme = useSyncExternalStore(subscribeTheme, getPreferredTheme, getServerTheme);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
 
   const setThemeAndPersist = useCallback((nextTheme: Theme) => {
-    setTheme(nextTheme);
     if (typeof window !== "undefined") {
-      localStorage.setItem("doceo-theme", nextTheme);
+      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      window.dispatchEvent(new Event(THEME_EVENT));
     }
   }, []);
 

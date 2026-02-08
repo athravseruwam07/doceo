@@ -27,6 +27,36 @@ export interface SessionResponse {
   subject: string;
   step_count: number;
   status: string;
+  created_at?: string;
+  course_id?: string;
+  course_label?: string;
+}
+
+export interface CourseSummary {
+  course_id: string;
+  label: string;
+  created_at: string;
+  material_count: number;
+}
+
+export interface CourseMaterial {
+  material_id: string;
+  filename: string;
+  content_type: string;
+  uploaded_at: string;
+  char_count: number;
+  chunk_count: number;
+  preview: string;
+}
+
+export interface CourseLesson {
+  session_id: string;
+  title: string;
+  subject: string;
+  status: string;
+  step_count: number;
+  created_at: string;
+  problem_preview: string;
 }
 
 export interface ChatMessage {

@@ -4,7 +4,7 @@ import { use, useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useSSE } from "@/hooks/useSSE";
 import { useChat } from "@/hooks/useChat";
-import { getLessonStreamUrl } from "@/lib/api";
+import { getLessonStreamUrl, getSessionInfo } from "@/lib/api";
 import { LessonStep, SessionResponse } from "@/lib/types";
 import PlayerShell from "@/components/player/PlayerShell";
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
@@ -24,8 +24,8 @@ export default function LessonPage({ params }: LessonPageProps) {
   const [loadingElapsed, setLoadingElapsed] = useState(0);
 
   useEffect(() => {
-    fetch(`/api/sessions/${sessionId}`)
-      .then((r) => (r.ok ? r.json() : null))
+    getSessionInfo(sessionId)
+      .then((payload) => payload || null)
       .then(setSession)
       .catch(() => {});
   }, [sessionId]);

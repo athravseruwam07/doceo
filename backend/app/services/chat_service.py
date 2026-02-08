@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 from app.models.session import get_session, update_session
+from app.models.course import get_course, search_course_snippets
 from app.services.ai_service import generate_chat_response
 from app.services.voice_service import get_voice_service
 
@@ -160,6 +161,24 @@ async def handle_message(
     steps = session.get("steps", [])
     step_lookup = _build_step_lookup(steps if isinstance(steps, list) else [])
     lesson_context = _build_lesson_context(session, context)
+    course_id = session.get("course_id")
+    course_label: str | None = None
+    course_snippets: list[dict[str, Any]] = []
+
+    if isinstance(course_id, str) and course_id.strip():
+        course = get_course(course_id)
+        if course:
+            course_label = course.get("label")
+            snippet_query = " ".join(
+                part.strip()
+                for part in [
+                    message,
+                    context.get("current_step_title") if context else "",
+                    session.get("problem_text", ""),
+                ]
+                if isinstance(part, str) and part.strip()
+            )
+            course_snippets = search_course_snippets(course_id, snippet_query, top_k=4)
 
     # Store user message
     chat_log = session.get("chat_log", [])
@@ -174,6 +193,8 @@ async def handle_message(
         problem_context=problem_context,
         chat_history=chat_log,
         question=message,
+        course_label=course_label,
+        course_snippets=course_snippets,
     )
 
     response["role"] = "tutor"
