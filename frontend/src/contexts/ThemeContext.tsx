@@ -6,7 +6,6 @@ type Theme = "light" | "dark";
 
 interface ThemeContextType {
   theme: Theme;
-  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
 }
 
@@ -14,50 +13,43 @@ export const ThemeContext = createContext<ThemeContextType | undefined>(
   undefined
 );
 
-function applyTheme(themeValue: Theme) {
-  const html = document.documentElement;
-  if (themeValue === "dark") {
-    html.setAttribute("data-theme", "dark");
-  } else {
-    html.removeAttribute("data-theme");
-  }
+function getStoredTheme(): Theme | null {
+  if (typeof window === "undefined") return null;
+  const savedTheme = localStorage.getItem("doceo-theme") as Theme | null;
+  if (savedTheme === "light" || savedTheme === "dark") return savedTheme;
+  return null;
+}
+
+function getPreferredTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Always start with "light" to match SSR — hydrate real preference in useEffect
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>(
+    () => getStoredTheme() ?? getPreferredTheme()
+  );
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("doceo-theme");
-    let resolved: Theme = "light";
-    if (savedTheme === "dark" || savedTheme === "light") {
-      resolved = savedTheme;
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      resolved = "dark";
-    }
-    setTheme(resolved);
-    applyTheme(resolved);
+  const applyTheme = useCallback((themeValue: Theme) => {
+    const html = document.documentElement;
+    html.setAttribute("data-theme", themeValue);
   }, []);
 
+  // Keep HTML theme attribute synchronized with theme state.
   useEffect(() => {
     applyTheme(theme);
-  }, [theme]);
-
-  const setThemeAndPersist = useCallback((nextTheme: Theme) => {
-    setTheme(nextTheme);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("doceo-theme", nextTheme);
-    }
-  }, []);
+  }, [theme, applyTheme]);
 
   const toggleTheme = useCallback(() => {
-    setThemeAndPersist(theme === "light" ? "dark" : "light");
-  }, [theme, setThemeAndPersist]);
+    setTheme((prev) => {
+      const next = prev === "light" ? "dark" : "light";
+      localStorage.setItem("doceo-theme", next);
+      return next;
+    });
+  }, []);
 
   return (
-    <ThemeContext.Provider
-      value={{ theme, setTheme: setThemeAndPersist, toggleTheme }}
-    >
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );

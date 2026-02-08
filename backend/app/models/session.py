@@ -20,6 +20,8 @@ def create_session(
         "image_b64": image_b64,
         "step_count": step_count,
         "status": "processing",
+        "voice_status": "unknown",
+        "build_stage": "received",
         "steps": [],
         "chat_log": [],
     }

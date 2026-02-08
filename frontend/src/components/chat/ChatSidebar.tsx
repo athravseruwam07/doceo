@@ -18,6 +18,7 @@ interface ChatSidebarProps {
   isMobileOverlay?: boolean;
   isInterrupted?: boolean;
   onContinue?: () => void;
+  voiceNotice?: string | null;
   voiceEnabled?: boolean;
 }
 
@@ -33,6 +34,7 @@ export default function ChatSidebar({
   isMobileOverlay = false,
   isInterrupted = false,
   onContinue,
+  voiceNotice,
   voiceEnabled = true,
 }: ChatSidebarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -47,7 +49,7 @@ export default function ChatSidebar({
   return (
     <div
       className={`
-        flex flex-col bg-[var(--paper)] min-w-0
+        flex flex-col bg-[var(--paper)]
         ${
           isMobileOverlay
             ? "fixed inset-0 z-50"
@@ -66,6 +68,11 @@ export default function ChatSidebar({
               ? "Lesson paused — ask your question"
               : "Ask about any step or concept"}
           </p>
+          {voiceNotice && (
+            <p className="mt-1 text-[11px] text-[var(--error)] font-[family-name:var(--font-body)]">
+              {voiceNotice}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {onClose && (

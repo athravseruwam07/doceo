@@ -165,8 +165,9 @@ export class AudioSyncPlayer {
   /**
    * Play a preloaded segment. If not preloaded, creates Audio on-the-fly.
    * Returns immediately — does NOT block for the full duration.
+   * Optional onEnded callback fires when audio playback completes.
    */
-  async playSegment(eventId: string, audioUrl?: string): Promise<void> {
+  async playSegment(eventId: string, audioUrl?: string, onEnded?: () => void): Promise<void> {
     let segment = this.segments.get(eventId);
 
     // Fallback: if preload didn't work, create Audio on-the-fly
@@ -179,6 +180,7 @@ export class AudioSyncPlayer {
 
     if (!segment || !segment.loaded) {
       console.warn(`[Audio] No segment and no URL for ${eventId}, skipping`);
+      onEnded?.();
       return;
     }
 
@@ -198,6 +200,15 @@ export class AudioSyncPlayer {
     audio.volume = 1.0;
     audio.currentTime = 0;
 
+    // Wire up onEnded callback
+    if (onEnded) {
+      const handler = () => {
+        audio.removeEventListener("ended", handler);
+        onEnded();
+      };
+      audio.addEventListener("ended", handler, { once: true });
+    }
+
     try {
       await audio.play();
       console.log(`[Audio] Playing ${eventId}`);
@@ -206,7 +217,20 @@ export class AudioSyncPlayer {
       console.warn(`[Audio] play() blocked for ${eventId}:`, err);
       this.isPlaying = false;
       this.currentSegmentId = null;
+      onEnded?.();
     }
+  }
+
+  /**
+   * Get the actual loaded duration of an audio segment.
+   * Returns 0 if the segment hasn't been loaded yet.
+   */
+  getDuration(eventId: string): number {
+    const segment = this.segments.get(eventId);
+    if (segment && segment.loaded) {
+      return segment.audio.duration || segment.duration || 0;
+    }
+    return 0;
   }
 
   /**
