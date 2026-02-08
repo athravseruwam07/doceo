@@ -24,6 +24,7 @@ export function useAnimationPlayer(
     speed: 1,
     currentStep: 0,
     totalSteps: 0,
+    voiceEnabled: false,
   });
 
   const [visibleEvents, setVisibleEvents] = useState<AnimationEvent[]>([]);

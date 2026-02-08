@@ -12,6 +12,8 @@ export interface LessonStep {
   narration?: string;
   audio_url?: string;
   audio_duration?: number;
+  // Granular teaching events from backend (overrides algorithmic timeline)
+  events?: AnimationEvent[];
 }
 
 export interface LessonCompleteEvent {
@@ -61,6 +63,9 @@ export interface AnimationEvent {
     targetId?: string;
     stepNumber?: number;
     stepTitle?: string;
+    // Voice fields (populated by backend for narrate events)
+    audioUrl?: string;
+    audioDuration?: number;
   };
 }
 
