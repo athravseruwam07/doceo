@@ -11,6 +11,7 @@ import { stepsToTimeline } from "@/lib/timeline";
 import { useAnimationPlayer } from "@/hooks/useAnimationPlayer";
 import { useTheme } from "@/hooks/useTheme";
 import { useVoicePlayer } from "@/hooks/useVoicePlayer";
+import { useVoiceSession } from "@/hooks/useVoiceSession";
 import WhiteboardCanvas from "./WhiteboardCanvas";
 import PlayerControls from "./PlayerControls";
 import LessonSummary from "./LessonSummary";
@@ -47,11 +48,14 @@ export default function PlayerShell({
   const player = useAnimationPlayer(events);
   const { theme, toggleTheme } = useTheme();
   const voice = useVoicePlayer();
+  const voiceSession = useVoiceSession(sessionId);
 
   // Track which narrate event we last started playing audio for
   const lastPlayedEventIdRef = useRef<string | null>(null);
   // Track player status to detect pause/resume transitions
   const prevStatusRef = useRef(player.state.status);
+  // Track whether interruption was auto-triggered by user interaction.
+  const autoInterruptedRef = useRef(false);
 
   // Auto-play when events first become available
   useEffect(() => {
@@ -204,16 +208,26 @@ export default function PlayerShell({
   }, [player, chatOpen, voiceToggle]);
 
   const handleInterrupt = useCallback(() => {
+    autoInterruptedRef.current = false;
+    player.interrupt();
+    setChatOpen(true);
+  }, [player]);
+
+  const handleUserInteractionInterrupt = useCallback(() => {
+    if (player.state.status !== "playing") return;
+    autoInterruptedRef.current = true;
     player.interrupt();
     setChatOpen(true);
   }, [player]);
 
   const handleContinue = useCallback(() => {
+    autoInterruptedRef.current = false;
     setChatOpen(false);
     player.resume();
   }, [player]);
 
   const handleCloseChat = useCallback(() => {
+    autoInterruptedRef.current = false;
     setChatOpen(false);
     if (player.state.status === "interrupted") {
       player.resume();
@@ -238,8 +252,41 @@ export default function PlayerShell({
         activeNarration: narration || undefined,
       };
       await onSendMessage(message, context);
+      // If the lesson was auto-interrupted due to user interaction, resume once
+      // the tutor response has been posted.
+      if (
+        autoInterruptedRef.current &&
+        player.state.status === "interrupted"
+      ) {
+        player.resume();
+        autoInterruptedRef.current = false;
+      }
     },
-    [onSendMessage, player.state.currentStep, player.activeEvent, currentStepTitle, narration]
+    [
+      onSendMessage,
+      player,
+      currentStepTitle,
+      narration,
+    ]
+  );
+
+  const handleVoiceStart = useCallback(() => {
+    handleUserInteractionInterrupt();
+    voiceSession.sendSpeechStart();
+  }, [handleUserInteractionInterrupt, voiceSession]);
+
+  const handleVoiceEnd = useCallback(() => {
+    voiceSession.sendSpeechEnd();
+  }, [voiceSession]);
+
+  const handleVoiceTranscript = useCallback(
+    async (text: string, isFinal: boolean) => {
+      voiceSession.sendTranscript(text, isFinal);
+      if (isFinal && text.trim()) {
+        await handleSendChatMessage(text.trim());
+      }
+    },
+    [handleSendChatMessage, voiceSession]
   );
 
   const controlsState = useMemo(
@@ -323,6 +370,10 @@ export default function PlayerShell({
                   messages={messages}
                   loading={chatLoading}
                   onSend={handleSendChatMessage}
+                  onUserInteractionStart={handleUserInteractionInterrupt}
+                  onVoiceStart={handleVoiceStart}
+                  onVoiceEnd={handleVoiceEnd}
+                  onVoiceTranscript={handleVoiceTranscript}
                   onClose={handleCloseChat}
                   isInterrupted={player.state.status === "interrupted"}
                   onContinue={handleContinue}
@@ -347,6 +398,10 @@ export default function PlayerShell({
                 messages={messages}
                 loading={chatLoading}
                 onSend={handleSendChatMessage}
+                onUserInteractionStart={handleUserInteractionInterrupt}
+                onVoiceStart={handleVoiceStart}
+                onVoiceEnd={handleVoiceEnd}
+                onVoiceTranscript={handleVoiceTranscript}
                 onClose={handleCloseChat}
                 isMobileOverlay
                 isInterrupted={player.state.status === "interrupted"}
