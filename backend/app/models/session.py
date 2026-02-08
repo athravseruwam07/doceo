@@ -22,6 +22,8 @@ def create_session(
         "status": "processing",
         "steps": [],
         "chat_log": [],
+        "exam_materials": [],
+        "exam_cram": None,
     }
     _sessions[session_id] = session
     return session

@@ -1,11 +1,12 @@
 import asyncio
+import copy
+import json
 import logging
 from typing import AsyncGenerator
 
 from app.models.session import get_session, update_session
-from app.services.ai_service import analyze_problem
+from app.schemas.lesson import LessonComplete, LessonStep
 from app.services.voice_service import get_voice_service
-from app.schemas.lesson import LessonStep, LessonComplete
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +18,8 @@ def _steps_have_audio(steps: list[dict]) -> bool:
     """Check if any narrate event in the steps already has audio_url."""
     for step in steps:
         for event in step.get("events", []):
-            if event.get("type") == "narrate":
-                if event.get("payload", {}).get("audio_url"):
-                    return True
+            if event.get("type") == "narrate" and event.get("payload", {}).get("audio_url"):
+                return True
     return False
 
 
@@ -34,17 +34,12 @@ async def _generate_audio_throttled(
 
 
 async def _enrich_steps_with_audio(all_steps: list[dict]) -> list[dict]:
-    """Generate ElevenLabs audio for every narrate event and attach URLs.
-
-    Returns the steps list with audio_url and audio_duration added to
-    narrate event payloads, and step-level audio fields set.
-    """
+    """Generate ElevenLabs audio for narrate events and attach URLs."""
     voice_service = get_voice_service()
     semaphore = asyncio.Semaphore(_ELEVENLABS_CONCURRENCY)
 
-    # Collect ALL narrate events across ALL steps for batch processing
-    all_narrate_refs = []  # list of (step_index, event_index, original_duration)
-    all_narrate_tasks = []
+    narrate_refs: list[tuple[int, int]] = []
+    tasks = []
 
     for step_idx, step in enumerate(all_steps):
         events = step.get("events", [])
@@ -52,38 +47,23 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> list[dict]:
             if event.get("type") == "narrate":
                 text = event.get("payload", {}).get("text", "")
                 if text:
-                    all_narrate_refs.append((step_idx, ev_idx, event.get("duration", 3000)))
-                    all_narrate_tasks.append(
-                        _generate_audio_throttled(semaphore, voice_service, text)
-                    )
+                    narrate_refs.append((step_idx, ev_idx))
+                    tasks.append(_generate_audio_throttled(semaphore, voice_service, text))
 
-    # Generate all audio with throttled concurrency
-    print(f"[LessonService] Generating audio for {len(all_narrate_tasks)} narrate events (max {_ELEVENLABS_CONCURRENCY} concurrent)...")
-    audio_results = await asyncio.gather(*all_narrate_tasks, return_exceptions=True)
+    audio_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Attach audio to events
-    for (step_idx, ev_idx, original_duration), audio_result in zip(all_narrate_refs, audio_results):
+    for (step_idx, ev_idx), audio_result in zip(narrate_refs, audio_results):
         event = all_steps[step_idx]["events"][ev_idx]
-
         if isinstance(audio_result, Exception):
-            print(f"[LessonService] Audio generation failed for step {step_idx} event {ev_idx}: {audio_result}")
-            # Keep original estimated duration — don't set to 0
             continue
 
         audio_url = audio_result.get("audio_url")
         audio_duration = audio_result.get("duration", 0)
-
         if audio_url and audio_duration > 0:
-            # Replace with real audio duration
-            event["duration"] = audio_duration * 1000  # seconds → ms
+            event["duration"] = audio_duration * 1000
             event["payload"]["audio_url"] = audio_url
             event["payload"]["audio_duration"] = audio_duration
-            print(f"[LessonService] Step {step_idx} event {ev_idx}: audio_url={audio_url} duration={audio_duration:.1f}s")
-        else:
-            # Audio generation returned no URL — keep original estimated duration
-            print(f"[LessonService] No audio URL for step {step_idx} event {ev_idx}, keeping estimated duration")
 
-    # Set step-level audio fields for backward compat
     for step in all_steps:
         events = step.get("events", [])
         first_narrate_audio = None
@@ -102,46 +82,94 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> list[dict]:
     return all_steps
 
 
-async def create_lesson(session_id: str) -> None:
-    """Analyze the problem, generate audio per narrate event, store in session.
-
-    Flow:
-    1. Use existing steps if available, otherwise call Gemini to generate them
-    2. For each narrate event, generate ElevenLabs audio (throttled to avoid 429s)
-    3. Replace narrate event duration with actual audio duration (keep original as fallback)
-    4. Store enriched steps in session
-    """
+async def _generate_audio_in_background(session_id: str) -> None:
+    """Generate lesson narration audio asynchronously without blocking streaming."""
     session = get_session(session_id)
     if session is None:
         return
 
-    # Reuse existing steps if the session creation endpoint already generated them
-    existing_steps = session.get("steps", [])
-    if existing_steps and len(existing_steps) > 0:
-        print(f"[LessonService] Reusing {len(existing_steps)} existing steps, adding audio...")
-        result = {
-            "title": session.get("title", "Lesson"),
-            "subject": session.get("subject", "STEM"),
-            "steps": existing_steps,
-        }
-    else:
-        print("[LessonService] No existing steps, generating with Gemini...")
-        result = await analyze_problem(
-            problem_text=session.get("problem_text", ""),
-            image_b64=session.get("image_b64"),
+    if session.get("audio_status") == "in_progress":
+        return
+
+    steps = session.get("steps", [])
+    if not steps:
+        return
+
+    if _steps_have_audio(steps):
+        update_session(session_id, audio_status="complete")
+        return
+
+    update_session(session_id, audio_status="in_progress")
+    try:
+        steps_with_audio = await _enrich_steps_with_audio(copy.deepcopy(steps))
+        update_session(
+            session_id,
+            steps=steps_with_audio,
+            step_count=len(steps_with_audio),
+            audio_status="complete",
         )
+    except Exception:
+        logger.exception("Background audio generation failed for session %s", session_id)
+        update_session(session_id, audio_status="failed")
+
+
+def _schedule_background_audio_generation(session_id: str) -> None:
+    """Queue background audio generation if needed."""
+    session = get_session(session_id)
+    if session is None:
+        return
+
+    status = session.get("audio_status")
+    if status in {"queued", "in_progress", "complete"}:
+        return
+
+    steps = session.get("steps", [])
+    if not steps or _steps_have_audio(steps):
+        return
+
+    update_session(session_id, audio_status="queued")
+    asyncio.create_task(_generate_audio_in_background(session_id))
+
+
+async def create_lesson(session_id: str) -> None:
+    """Generate lesson structure quickly and defer audio generation."""
+    session = get_session(session_id)
+    if session is None:
+        return
+
+    existing_steps = session.get("steps", [])
+    if existing_steps:
+        update_session(
+            session_id,
+            title=session.get("title", "Lesson"),
+            subject=session.get("subject", "STEM"),
+            steps=existing_steps,
+            step_count=len(existing_steps),
+            status="streaming",
+            audio_status="complete" if _steps_have_audio(existing_steps) else "pending",
+        )
+        if not _steps_have_audio(existing_steps):
+            _schedule_background_audio_generation(session_id)
+        return
+
+    from app.services.ai_service import analyze_problem
+
+    result = await analyze_problem(
+        problem_text=session.get("problem_text", ""),
+        image_b64=session.get("image_b64"),
+    )
 
     all_steps = result.get("steps", [])
-    steps_with_audio = await _enrich_steps_with_audio(all_steps)
-
     update_session(
         session_id,
         title=result["title"],
         subject=result["subject"],
-        steps=steps_with_audio,
-        step_count=len(steps_with_audio),
+        steps=all_steps,
+        step_count=len(all_steps),
         status="streaming",
+        audio_status="pending",
     )
+    _schedule_background_audio_generation(session_id)
 
 
 async def stream_lesson_steps(session_id: str) -> AsyncGenerator[dict, None]:
@@ -152,14 +180,28 @@ async def stream_lesson_steps(session_id: str) -> AsyncGenerator[dict, None]:
 
     steps = session.get("steps", [])
 
-    # Generate audio if steps don't have it yet
-    if not steps or not _steps_have_audio(steps):
-        print(f"[LessonService] Steps need audio generation (have_steps={bool(steps)}, have_audio={_steps_have_audio(steps) if steps else False})")
-        await create_lesson(session_id)
+    yield {"event": "status", "data": json.dumps({"state": "connected"})}
+
+    if not steps:
+        lesson_task = asyncio.create_task(create_lesson(session_id))
+        elapsed_seconds = 0
+        while not lesson_task.done():
+            await asyncio.sleep(2.0)
+            elapsed_seconds += 2
+            yield {
+                "event": "status",
+                "data": json.dumps(
+                    {"state": "generating", "elapsed_seconds": elapsed_seconds}
+                ),
+            }
+        await lesson_task
         session = get_session(session_id)
         if session is None:
             return
         steps = session.get("steps", [])
+
+    if steps and not _steps_have_audio(steps):
+        _schedule_background_audio_generation(session_id)
 
     update_session(session_id, status="streaming")
 

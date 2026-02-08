@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import sessions, lessons, chat, export, audio
+from app.routers import sessions, lessons, chat, export, audio, voice, exam_cram
 
 app = FastAPI(title="Doceo API", version="0.1.0")
 
@@ -18,7 +18,9 @@ app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(lessons.router, prefix="/sessions", tags=["lessons"])
 app.include_router(chat.router, prefix="/sessions", tags=["chat"])
 app.include_router(export.router, prefix="/sessions", tags=["export"])
+app.include_router(exam_cram.router, prefix="/sessions", tags=["exam-cram"])
 app.include_router(audio.router, prefix="/audio", tags=["audio"])
+app.include_router(voice.router, prefix="/sessions", tags=["voice"])
 
 
 @app.get("/health")

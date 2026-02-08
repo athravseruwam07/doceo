@@ -1,15 +1,16 @@
 import type { NextConfig } from "next";
 
+const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
         source: "/api/:path*",
-        destination: "http://localhost:8000/:path*",
+        destination: `${backendUrl}/:path*`,
       },
       {
         source: "/audio/:path*",
-        destination: "http://localhost:8000/audio/:path*",
+        destination: `${backendUrl}/audio/:path*`,
       },
     ];
   },

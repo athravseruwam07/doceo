@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useUpload } from "@/hooks/useUpload";
 import { useTheme } from "@/hooks/useTheme";
@@ -66,9 +67,11 @@ export default function Home() {
     submit,
   } = useUpload();
   const [mode, setMode] = useState<InputMode>("type");
-  const [recentProblems, setRecentProblems] = useState<string[]>(
-    getInitialRecentProblems
-  );
+  const [recentProblems, setRecentProblems] = useState<string[]>([]);
+
+  useEffect(() => {
+    setRecentProblems(getInitialRecentProblems());
+  }, []);
 
   const saveRecentProblem = (problem: string) => {
     const cleaned = problem.trim();
@@ -100,6 +103,12 @@ export default function Home() {
           Doceo
         </span>
         <div className="flex items-center gap-4">
+          <Link
+            href="/exam-cram"
+            className="text-[12px] text-[var(--ink-tertiary)] tracking-wide uppercase hover:text-[var(--ink)] font-[family-name:var(--font-body)]"
+          >
+            Exam cram
+          </Link>
           <button
             onClick={toggleTheme}
             className="p-2 rounded-md hover:bg-[var(--cream-dark)] transition-colors cursor-pointer"

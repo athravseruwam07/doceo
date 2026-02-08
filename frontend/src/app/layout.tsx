@@ -1,22 +1,13 @@
 import type { Metadata } from "next";
-import { Crimson_Pro, Source_Sans_3 } from "next/font/google";
+import type { CSSProperties } from "react";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { VoiceProvider } from "@/contexts/VoiceContext";
 import "./globals.css";
 
-const crimson = Crimson_Pro({
-  variable: "--font-crimson",
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["400", "500", "600", "700"],
-});
-
-const sourceSans = Source_Sans_3({
-  variable: "--font-source",
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["300", "400", "500", "600"],
-});
+const headingFallback =
+  "'Iowan Old Style','Palatino Linotype',Palatino,'URW Palladio L',serif";
+const bodyFallback =
+  "'Avenir Next','Segoe UI',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
 
 export const metadata: Metadata = {
   title: "Doceo — Step-by-step STEM tutoring",
@@ -31,7 +22,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${crimson.variable} ${sourceSans.variable}`}>
+      <body
+        style={
+          {
+            "--font-crimson": headingFallback,
+            "--font-source": bodyFallback,
+          } as CSSProperties
+        }
+      >
         <ThemeProvider>
           <VoiceProvider>{children}</VoiceProvider>
         </ThemeProvider>

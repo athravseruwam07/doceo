@@ -6,8 +6,6 @@ import os
 from datetime import datetime, timedelta
 from typing import Any
 
-from elevenlabs.client import ElevenLabs
-
 from app.config import settings
 
 
@@ -16,6 +14,9 @@ class VoiceService:
 
     def __init__(self):
         """Initialize ElevenLabs client."""
+        # Lazy import avoids slow startup when voice features are unused.
+        from elevenlabs.client import ElevenLabs
+
         self.client = ElevenLabs(api_key=settings.elevenlabs_api_key)
         self.cache_dir = "audio_cache"
         self._ensure_cache_dir()

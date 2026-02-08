@@ -3,7 +3,6 @@ import uuid
 from typing import Any
 
 from app.models.session import get_session, update_session
-from app.services.ai_service import generate_chat_response
 from app.services.voice_service import get_voice_service
 
 
@@ -169,6 +168,8 @@ async def handle_message(
     problem_context = session.get("problem_text", "")
     if lesson_context:
         problem_context = f"{problem_context}\n\n{lesson_context}"
+
+    from app.services.ai_service import generate_chat_response
 
     response = await generate_chat_response(
         problem_context=problem_context,

@@ -1,24 +1,51 @@
 """AI service using Google Gemini API for lesson generation and tutoring."""
 
+import asyncio
 import json
 import logging
 import uuid
+from functools import lru_cache
 from typing import Any
 
-import google.generativeai as genai
-
 from app.config import settings
-from app.mock.responses import (
-    MOCK_CHAT_RESPONSES,
-    MOCK_LESSON_STEPS,
-    MOCK_SESSION_SUBJECT,
-    MOCK_SESSION_TITLE,
-)
-
-# Configure Gemini
-genai.configure(api_key=settings.gemini_api_key)
 
 logger = logging.getLogger(__name__)
+_genai_module = None
+_genai_configured = False
+
+
+@lru_cache(maxsize=1)
+def _get_mock_payloads() -> dict[str, Any]:
+    """Lazy-load mock payloads so startup is not blocked by large constants."""
+    from app.mock.responses import (
+        MOCK_CHAT_RESPONSES,
+        MOCK_LESSON_STEPS,
+        MOCK_SESSION_SUBJECT,
+        MOCK_SESSION_TITLE,
+    )
+
+    return {
+        "chat": MOCK_CHAT_RESPONSES,
+        "lesson_steps": MOCK_LESSON_STEPS,
+        "session_subject": MOCK_SESSION_SUBJECT,
+        "session_title": MOCK_SESSION_TITLE,
+    }
+
+
+def _get_generative_model():
+    """Lazy-load Gemini SDK to avoid slow import during app startup."""
+    global _genai_module, _genai_configured
+
+    if _genai_module is None:
+        import google.generativeai as genai  # Lazy import
+
+        _genai_module = genai
+
+    if not _genai_configured:
+        _genai_module.configure(api_key=settings.gemini_api_key)
+        _genai_configured = True
+
+    return _genai_module.GenerativeModel(settings.gemini_model)
 
 
 async def analyze_problem(
@@ -36,7 +63,7 @@ async def analyze_problem(
     try:
         prompt = _build_lesson_generation_prompt(problem_text, image_b64)
 
-        model = genai.GenerativeModel(settings.gemini_model)
+        model = _get_generative_model()
 
         if image_b64:
             import base64
@@ -46,19 +73,22 @@ async def analyze_problem(
 
             image_data = base64.b64decode(image_b64)
             image = Image.open(BytesIO(image_data))
-            response = model.generate_content([prompt, image])
+            response = await asyncio.to_thread(
+                model.generate_content, [prompt, image]
+            )
         else:
-            response = model.generate_content(prompt)
+            response = await asyncio.to_thread(model.generate_content, prompt)
 
         result = _parse_lesson_response(response.text)
         return result
 
     except Exception as e:
         logger.error(f"Error analyzing problem with Gemini: {e}")
+        mock = _get_mock_payloads()
         return {
-            "title": MOCK_SESSION_TITLE,
-            "subject": MOCK_SESSION_SUBJECT,
-            "steps": MOCK_LESSON_STEPS,
+            "title": mock["session_title"],
+            "subject": mock["session_subject"],
+            "steps": mock["lesson_steps"],
         }
 
 
@@ -68,18 +98,19 @@ async def generate_chat_response(
     """Generate a tutor response to a student question."""
     try:
         prompt = _build_chat_prompt(problem_context, chat_history, question)
-        model = genai.GenerativeModel(settings.gemini_model)
-        response = model.generate_content(prompt)
+        model = _get_generative_model()
+        response = await asyncio.to_thread(model.generate_content, prompt)
         result = _parse_chat_response(response.text)
         return result
 
     except Exception as e:
         logger.error(f"Error generating chat response: {e}")
+        mock = _get_mock_payloads()["chat"]
         question_lower = question.lower()
         for keyword in ["why", "how", "example"]:
             if keyword in question_lower:
-                return MOCK_CHAT_RESPONSES[keyword]
-        return MOCK_CHAT_RESPONSES["default"]
+                return mock[keyword]
+        return mock["default"]
 
 
 def _build_lesson_generation_prompt(problem_text: str, image_b64: str | None) -> str:
@@ -481,10 +512,11 @@ def _generate_events_from_content(step: dict) -> list[dict]:
 
 def _fallback_response() -> dict:
     """Return mock data as fallback."""
+    mock = _get_mock_payloads()
     return {
-        "title": MOCK_SESSION_TITLE,
-        "subject": MOCK_SESSION_SUBJECT,
-        "steps": MOCK_LESSON_STEPS,
+        "title": mock["session_title"],
+        "subject": mock["session_subject"],
+        "steps": mock["lesson_steps"],
     }
 
 
@@ -492,6 +524,7 @@ def _parse_chat_response(response_text: str) -> dict:
     """Parse chat response from Gemini."""
     try:
         json_str = response_text.strip()
+        mock_chat = _get_mock_payloads()["chat"]
 
         if json_str.startswith("```"):
             json_str = json_str.split("```")[1]
@@ -503,7 +536,7 @@ def _parse_chat_response(response_text: str) -> dict:
 
         if "message" not in data:
             logger.warning("Missing 'message' field in chat response")
-            return MOCK_CHAT_RESPONSES["default"]
+            return mock_chat["default"]
 
         if "narration" not in data:
             data["narration"] = data.get("message", "")
@@ -514,7 +547,289 @@ def _parse_chat_response(response_text: str) -> dict:
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse chat JSON: {e}")
-        return MOCK_CHAT_RESPONSES["default"]
+        return _get_mock_payloads()["chat"]["default"]
     except Exception as e:
         logger.error(f"Unexpected error parsing chat response: {e}")
-        return MOCK_CHAT_RESPONSES["default"]
+        return _get_mock_payloads()["chat"]["default"]
+
+
+async def generate_exam_cram_plan(
+    subject_hint: str,
+    exam_name: str | None,
+    materials: list[dict[str, str]],
+    top_terms: list[str] | None = None,
+) -> dict:
+    """Generate a predictive exam-cram plan from uploaded materials."""
+    try:
+        model = _get_generative_model()
+        prompt = _build_exam_cram_prompt(
+            subject_hint=subject_hint,
+            exam_name=exam_name,
+            materials=materials,
+            top_terms=top_terms or [],
+        )
+        response = await asyncio.to_thread(model.generate_content, prompt)
+        return _parse_exam_cram_response(response.text, subject_hint, top_terms or [])
+    except Exception as e:
+        logger.error(f"Error generating exam cram plan: {e}")
+        return _fallback_exam_cram_response(subject_hint, top_terms or [])
+
+
+def _build_exam_cram_prompt(
+    subject_hint: str,
+    exam_name: str | None,
+    materials: list[dict[str, str]],
+    top_terms: list[str],
+) -> str:
+    material_blocks: list[str] = []
+    for idx, item in enumerate(materials, start=1):
+        material_blocks.append(
+            (
+                f"Material {idx}\n"
+                f"Name: {item.get('name', f'Material {idx}')}\n"
+                f"Type: {item.get('source_type', 'text')}\n"
+                f"Content:\n{item.get('content', '')}"
+            )
+        )
+
+    materials_text = "\n\n---\n\n".join(material_blocks)
+    top_terms_text = ", ".join(top_terms[:15]) if top_terms else "None"
+    exam_label = exam_name or "Upcoming Exam"
+
+    return f"""You are a predictive STEM exam prep assistant.
+
+Subject hint: {subject_hint}
+Exam: {exam_label}
+Frequent terms extracted from the corpus: {top_terms_text}
+
+Materials:
+{materials_text}
+
+Task:
+1) Identify recurring question patterns and high-frequency concepts.
+2) Predict the highest-likelihood topics for the next exam.
+3) Produce focused lesson targets and realistic practice questions.
+4) Keep the output concise and actionable for a student with limited study time.
+
+Return valid JSON only with this exact shape:
+{{
+  "subject": "Detected subject",
+  "recurring_patterns": [
+    "Pattern description"
+  ],
+  "prioritized_topics": [
+    {{
+      "topic": "Topic name",
+      "likelihood": 0.0,
+      "why": "Why this is likely",
+      "evidence": ["Signals from materials"],
+      "study_actions": ["Specific study action"]
+    }}
+  ],
+  "focused_lessons": [
+    {{
+      "title": "Lesson title",
+      "objective": "What student should master",
+      "key_points": ["Point 1", "Point 2"],
+      "estimated_minutes": 20
+    }}
+  ],
+  "practice_questions": [
+    {{
+      "question": "Exam-style question",
+      "difficulty": "easy",
+      "concept": "Core concept",
+      "answer_outline": "Concise marking-scheme style outline"
+    }}
+  ]
+}}
+
+Rules:
+- likelihood must be between 0 and 1
+- Include 5 to 8 prioritized topics
+- Include 4 to 6 focused lessons
+- Include 8 to 12 practice questions
+- difficulty must be one of: easy, medium, hard
+- Use realistic STEM exam language, no fluff
+"""
+
+
+def _clamp_likelihood(value: Any) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except Exception:
+        return 0.5
+
+
+def _parse_exam_cram_response(
+    response_text: str, subject_hint: str, top_terms: list[str]
+) -> dict:
+    try:
+        json_str = response_text.strip()
+
+        if json_str.startswith("```"):
+            json_str = json_str.split("```")[1]
+            if json_str.startswith("json"):
+                json_str = json_str[4:]
+            json_str = json_str.strip()
+
+        data = json.loads(json_str)
+
+        subject = data.get("subject") or subject_hint
+        recurring_patterns = data.get("recurring_patterns", [])
+
+        prioritized_topics = []
+        for topic in data.get("prioritized_topics", [])[:8]:
+            if not isinstance(topic, dict):
+                continue
+            name = str(topic.get("topic", "")).strip()
+            if not name:
+                continue
+            prioritized_topics.append(
+                {
+                    "topic": name,
+                    "likelihood": _clamp_likelihood(topic.get("likelihood", 0.5)),
+                    "why": str(topic.get("why", "")).strip() or "Commonly recurring in provided materials.",
+                    "evidence": [
+                        str(x).strip()
+                        for x in (topic.get("evidence", []) or [])
+                        if str(x).strip()
+                    ][:4],
+                    "study_actions": [
+                        str(x).strip()
+                        for x in (topic.get("study_actions", []) or [])
+                        if str(x).strip()
+                    ][:4],
+                }
+            )
+
+        focused_lessons = []
+        for lesson in data.get("focused_lessons", [])[:6]:
+            if not isinstance(lesson, dict):
+                continue
+            title = str(lesson.get("title", "")).strip()
+            objective = str(lesson.get("objective", "")).strip()
+            if not title or not objective:
+                continue
+            try:
+                estimated = int(lesson.get("estimated_minutes", 20))
+            except Exception:
+                estimated = 20
+            focused_lessons.append(
+                {
+                    "title": title,
+                    "objective": objective,
+                    "key_points": [
+                        str(x).strip()
+                        for x in (lesson.get("key_points", []) or [])
+                        if str(x).strip()
+                    ][:5],
+                    "estimated_minutes": max(5, min(60, estimated)),
+                }
+            )
+
+        practice_questions = []
+        for item in data.get("practice_questions", [])[:12]:
+            if not isinstance(item, dict):
+                continue
+            question = str(item.get("question", "")).strip()
+            concept = str(item.get("concept", "")).strip()
+            outline = str(item.get("answer_outline", "")).strip()
+            difficulty = str(item.get("difficulty", "medium")).strip().lower()
+            if difficulty not in {"easy", "medium", "hard"}:
+                difficulty = "medium"
+            if not question or not concept:
+                continue
+            practice_questions.append(
+                {
+                    "question": question,
+                    "difficulty": difficulty,
+                    "concept": concept,
+                    "answer_outline": outline or "Outline key formulas, substitutions, and final result.",
+                }
+            )
+
+        if not prioritized_topics or not focused_lessons or not practice_questions:
+            return _fallback_exam_cram_response(subject_hint, top_terms)
+
+        return {
+            "subject": subject,
+            "recurring_patterns": [
+                str(x).strip() for x in recurring_patterns if str(x).strip()
+            ][:8],
+            "prioritized_topics": prioritized_topics,
+            "focused_lessons": focused_lessons,
+            "practice_questions": practice_questions,
+        }
+    except Exception as e:
+        logger.error(f"Failed to parse exam cram response: {e}")
+        return _fallback_exam_cram_response(subject_hint, top_terms)
+
+
+def _fallback_exam_cram_response(subject_hint: str, top_terms: list[str]) -> dict:
+    seed_topics = top_terms[:6] or ["core concepts", "problem types", "derivations"]
+    prioritized_topics = []
+    for idx, topic in enumerate(seed_topics, start=1):
+        likelihood = max(0.35, min(0.9, 0.85 - (idx * 0.08)))
+        prioritized_topics.append(
+            {
+                "topic": topic.title(),
+                "likelihood": round(likelihood, 2),
+                "why": "Appears frequently in the provided study materials.",
+                "evidence": [f"Repeated references to '{topic}'"],
+                "study_actions": [
+                    f"Solve 3 timed questions focused on {topic}.",
+                    f"Review one worked solution and identify common mistakes in {topic}.",
+                ],
+            }
+        )
+
+    focused_lessons = [
+        {
+            "title": "High-Frequency Concept Review",
+            "objective": "Consolidate the most repeated exam concepts first.",
+            "key_points": ["Definitions", "Core formulas", "Typical exam traps"],
+            "estimated_minutes": 20,
+        },
+        {
+            "title": "Pattern-Based Problem Solving",
+            "objective": "Recognize recurring problem formats quickly.",
+            "key_points": ["Prompt cues", "Method selection", "Checkpoints"],
+            "estimated_minutes": 25,
+        },
+        {
+            "title": "Timed Mixed Practice",
+            "objective": "Improve speed and exam accuracy under constraints.",
+            "key_points": ["Time budgeting", "Partial-credit strategy", "Error review"],
+            "estimated_minutes": 30,
+        },
+        {
+            "title": "Final Weak-Spot Drill",
+            "objective": "Target remaining low-confidence areas before exam day.",
+            "key_points": ["Weak-topic quiz", "Formula recall", "Last-pass fixes"],
+            "estimated_minutes": 15,
+        },
+    ]
+
+    practice_questions = []
+    for i, topic in enumerate(seed_topics[:8], start=1):
+        difficulty = "easy" if i <= 2 else "medium" if i <= 5 else "hard"
+        practice_questions.append(
+            {
+                "question": f"Exam-style question {i}: apply {topic} in a multi-step setting.",
+                "difficulty": difficulty,
+                "concept": topic.title(),
+                "answer_outline": "State assumptions, apply the core method, show key steps, and verify final answer.",
+            }
+        )
+
+    return {
+        "subject": subject_hint or "General STEM",
+        "recurring_patterns": [
+            "Core concepts repeat across multiple materials.",
+            "Exam questions emphasize method selection under time pressure.",
+        ],
+        "prioritized_topics": prioritized_topics,
+        "focused_lessons": focused_lessons,
+        "practice_questions": practice_questions,
+    }

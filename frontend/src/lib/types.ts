@@ -88,3 +88,45 @@ export interface PlayerState {
   totalSteps: number;
   voiceEnabled: boolean;
 }
+
+export interface ExamCramMaterialSummary {
+  name: string;
+  source_type: "text" | "upload";
+  char_count: number;
+}
+
+export interface ExamCramTopic {
+  topic: string;
+  likelihood: number;
+  why: string;
+  evidence: string[];
+  study_actions: string[];
+}
+
+export interface ExamCramLesson {
+  title: string;
+  objective: string;
+  key_points: string[];
+  estimated_minutes: number;
+}
+
+export interface ExamCramQuestion {
+  question: string;
+  difficulty: "easy" | "medium" | "hard";
+  concept: string;
+  answer_outline: string;
+}
+
+export interface ExamCramResponse {
+  session_id: string;
+  subject: string;
+  exam_name?: string;
+  source_count: number;
+  generated_at: string;
+  top_terms: string[];
+  recurring_patterns: string[];
+  prioritized_topics: ExamCramTopic[];
+  focused_lessons: ExamCramLesson[];
+  practice_questions: ExamCramQuestion[];
+  materials: ExamCramMaterialSummary[];
+}
