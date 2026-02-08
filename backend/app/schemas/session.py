@@ -13,3 +13,5 @@ class SessionResponse(BaseModel):
     subject: str
     step_count: int
     status: str  # "processing" | "streaming" | "complete"
+    voice_status: Optional[str] = None
+    build_stage: Optional[str] = None

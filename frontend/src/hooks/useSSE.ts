@@ -26,21 +26,28 @@ export function useSSE<T = unknown>(url: string | null): UseSSEResult<T> {
   useEffect(() => {
     if (!url) return;
 
+    // Guard flag to prevent stale event handlers from firing after cleanup
+    let active = true;
+
     cleanup();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setData([]);
-    setError(null);
-    setIsComplete(false);
+    queueMicrotask(() => {
+      if (!active) return;
+      setData([]);
+      setError(null);
+      setIsComplete(false);
+    });
 
     const source = new EventSource(url);
     sourceRef.current = source;
 
     source.onopen = () => {
+      if (!active) return;
       setIsConnected(true);
       setError(null);
     };
 
     source.addEventListener("step", (e) => {
+      if (!active) return;
       try {
         const parsed = JSON.parse(e.data) as T;
         setData((prev) => [...prev, parsed]);
@@ -50,6 +57,7 @@ export function useSSE<T = unknown>(url: string | null): UseSSEResult<T> {
     });
 
     source.addEventListener("complete", (e) => {
+      if (!active) return;
       try {
         const parsed = JSON.parse(e.data) as T;
         setData((prev) => [...prev, parsed]);
@@ -62,12 +70,16 @@ export function useSSE<T = unknown>(url: string | null): UseSSEResult<T> {
     });
 
     source.onerror = () => {
-      setIsConnected(false);
+      if (!active) return;
       // Let EventSource auto-reconnect instead of hard-closing on transient errors.
       setError("Connection interrupted. Reconnecting...");
+      setIsConnected(false);
     };
 
-    return cleanup;
+    return () => {
+      active = false;
+      cleanup();
+    };
   }, [url, cleanup]);
 
   return { data, isConnected, error, isComplete };

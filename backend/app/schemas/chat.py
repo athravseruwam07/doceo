@@ -1,6 +1,7 @@
-from typing import Literal, Optional
+from pydantic import BaseModel
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from app.schemas.lesson import AnimationEvent
 
 
 class ChatContext(BaseModel):
@@ -11,46 +12,16 @@ class ChatContext(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1)
+    message: str
     context: Optional[ChatContext] = None
 
 
-class MathBlock(BaseModel):
-    latex: str
-    display: bool = True
-
-
-class EventPayload(BaseModel):
-    text: Optional[str] = None
-    latex: Optional[str] = None
-    display: Optional[bool] = None
-    position: Optional[Literal["top", "center", "bottom", "side"]] = None
-    stepNumber: Optional[int] = None
-    stepTitle: Optional[str] = None
-
-
-class ChatEvent(BaseModel):
-    id: str
-    type: Literal[
-        "step_marker",
-        "narrate",
-        "write_equation",
-        "write_text",
-        "annotate",
-        "pause",
-        "clear_section",
-        "transition",
-    ]
-    duration: int
-    payload: EventPayload = Field(default_factory=EventPayload)
-
-
 class ChatResponse(BaseModel):
-    role: Literal["tutor"]
+    role: str  # "tutor"
     message: str
-    math_blocks: list[MathBlock] = Field(default_factory=list)
+    math_blocks: list = []
     related_step: Optional[int] = None
     narration: Optional[str] = None
     audio_url: Optional[str] = None
     audio_duration: Optional[float] = None
-    events: list[ChatEvent] = Field(default_factory=list)
+    events: Optional[list[AnimationEvent]] = None
