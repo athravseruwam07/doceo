@@ -51,7 +51,8 @@ export default function SidePanelWork({
                   <AnimatedEquation
                     latex={event.payload.latex || ""}
                     display={event.payload.display ?? true}
-                    isActive={activeEvent?.id === event.id}
+                    duration={event.duration}
+                    isAnimating={activeEvent?.id === event.id}
                   />
                 </motion.div>
               );
@@ -67,7 +68,8 @@ export default function SidePanelWork({
                 >
                   <AnimatedText
                     text={event.payload.text || ""}
-                    isActive={activeEvent?.id === event.id}
+                    duration={event.duration}
+                    isAnimating={activeEvent?.id === event.id}
                   />
                 </motion.div>
               );
