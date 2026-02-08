@@ -148,7 +148,7 @@ export function useSegmentPlayer(
 
     const seg = segs[index];
     segIndexRef.current = index;
-    audioEndedRef.current = false;
+    audioEndedRef.current = !seg.audio;
     slotsRef.current = computeSlots(seg);
     visualIdxRef.current = -1;
     segStartRef.current = performance.now();
@@ -243,7 +243,7 @@ export function useSegmentPlayer(
     }));
 
     // Segment complete?
-    const allVisualsDone = visualIdxRef.current >= slots.length;
+    const allVisualsDone = slots.length === 0 || visualIdxRef.current >= slots.length;
     const segTimeDone = segElapsed >= seg.duration;
 
     if (segTimeDone && allVisualsDone) {

@@ -200,13 +200,37 @@ export class AudioSyncPlayer {
     audio.volume = 1.0;
     audio.currentTime = 0;
 
-    // Wire up onEnded callback
+    // Wire up completion callback with robust fallback paths.
+    let completed = false;
+    let stallTimeout: ReturnType<typeof setTimeout> | null = null;
+    const completeOnce = () => {
+      if (completed) return;
+      completed = true;
+      audio.removeEventListener("ended", completeOnce);
+      audio.removeEventListener("error", completeOnce);
+      audio.removeEventListener("abort", completeOnce);
+      audio.removeEventListener("stalled", handleStall);
+      audio.removeEventListener("waiting", handleStall);
+      if (stallTimeout) {
+        clearTimeout(stallTimeout);
+        stallTimeout = null;
+      }
+      onEnded?.();
+    };
+    const handleStall = () => {
+      if (stallTimeout) clearTimeout(stallTimeout);
+      // If media remains stalled for too long, release playback progression.
+      stallTimeout = setTimeout(() => {
+        console.warn(`[Audio] Stall timeout for ${eventId}, continuing playback timeline`);
+        completeOnce();
+      }, 2500);
+    };
     if (onEnded) {
-      const handler = () => {
-        audio.removeEventListener("ended", handler);
-        onEnded();
-      };
-      audio.addEventListener("ended", handler, { once: true });
+      audio.addEventListener("ended", completeOnce);
+      audio.addEventListener("error", completeOnce);
+      audio.addEventListener("abort", completeOnce);
+      audio.addEventListener("stalled", handleStall);
+      audio.addEventListener("waiting", handleStall);
     }
 
     try {
@@ -217,7 +241,7 @@ export class AudioSyncPlayer {
       console.warn(`[Audio] play() blocked for ${eventId}:`, err);
       this.isPlaying = false;
       this.currentSegmentId = null;
-      onEnded?.();
+      completeOnce();
     }
   }
 

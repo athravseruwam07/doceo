@@ -21,6 +21,7 @@ interface PlayerShellProps {
   chatLoading: boolean;
   onSendMessage: (message: string, context?: ChatContextPayload) => Promise<void>;
   voiceStatus?: VoiceStatus;
+  problemText?: string;
 }
 
 interface InjectedSegments {
@@ -79,9 +80,11 @@ function ensureTemporaryCleanup(segments: TimelineSegment[]): TimelineSegment[] 
   ];
 }
 
-const WhiteboardStage = dynamic(() => import("./WhiteboardStage"), {
+const InteractiveLessonStage = dynamic(() => import("./InteractiveLessonStage"), {
   ssr: false,
 });
+
+const POST_AUDIO_BUFFER_MS = 140;
 
 function applyInjectedSegments(
   baseSegments: TimelineSegment[],
@@ -110,6 +113,7 @@ export default function PlayerShell({
   chatLoading,
   onSendMessage,
   voiceStatus,
+  problemText,
 }: PlayerShellProps) {
   const [quickAskOpen, setQuickAskOpen] = useState(false);
   const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
@@ -125,9 +129,22 @@ export default function PlayerShell({
     () => (whiteboardV2Enabled ? planSegmentsForBoard(rawBaseSegments, steps) : rawBaseSegments),
     [rawBaseSegments, steps, whiteboardV2Enabled]
   );
-  const segments = useMemo(
+  const injectedTimeline = useMemo(
     () => applyInjectedSegments(baseSegments, injectedSegments),
     [baseSegments, injectedSegments]
+  );
+  const segments = useMemo(
+    () =>
+      injectedTimeline.map((segment) => {
+        const syncHoldMs = segment.syncHoldMs ?? 0;
+        const pacedDuration = Math.max(
+          segment.duration,
+          (segment.audio?.duration ?? 0) + syncHoldMs + POST_AUDIO_BUFFER_MS
+        );
+        if (pacedDuration === segment.duration) return segment;
+        return { ...segment, duration: pacedDuration };
+      }),
+    [injectedTimeline]
   );
   const player = useSegmentPlayer(segments);
   const voice = useVoicePlayer();
@@ -184,32 +201,8 @@ export default function PlayerShell({
   const voiceSetSpeed = voice.setSpeed;
   const voiceToggle = voice.toggleVoice;
   const voiceCancelSpeech = voice.cancelSpeech;
-
-  // ─── Diagnostic: Log audio availability when segments arrive ───
-  useEffect(() => {
-    if (segments.length === 0) return;
-    const withAudio = segments.filter(s => s.audio?.url);
-    const withoutAudio = segments.filter(s => s.audio && !s.audio.url);
-    const noAudioField = segments.filter(s => !s.audio);
-    console.log(
-      `[PlayerShell] ═══ AUDIO DIAGNOSTIC ═══\n` +
-      `  Total segments: ${segments.length}\n` +
-      `  With audio URL: ${withAudio.length}\n` +
-      `  Audio field but no URL: ${withoutAudio.length}\n` +
-      `  No audio field: ${noAudioField.length}\n` +
-      `  Voice enabled: ${voiceEnabled}\n` +
-      `  First segment audio: ${segments[0]?.audio?.url ?? "NONE"}`
-    );
-    if (withAudio.length > 0) {
-      console.log(`[PlayerShell] First audio URL: ${withAudio[0].audio!.url}`);
-    }
-    if (withAudio.length === 0) {
-      const withText = segments.filter(s => s.audio?.text);
-      console.warn(
-        `[PlayerShell] ⚠️ NO segments have audio URLs — using browser TTS fallback for ${withText.length} segments with narration text`
-      );
-    }
-  }, [segments, voiceEnabled]);
+  const onAudioEnded = player.onAudioEnded;
+  const resolvedProblemText = problemText?.trim() ? problemText : undefined;
 
   // Inject interruption visuals from tutor chat messages into playback queue.
   useEffect(() => {
@@ -249,36 +242,34 @@ export default function PlayerShell({
   }, [segments.length, playerStatus, playerPlay]);
 
   // ─── Voice: Play audio when segment INDEX changes ───
-  // Uses ElevenLabs audio URL when available, falls back to browser TTS
+  // Uses generated narration audio URL when available, falls back to browser TTS
   const currentSegIdx = player.state.currentSegmentIndex;
   useEffect(() => {
     if (currentSegIdx < 0 || currentSegIdx >= segments.length) return;
     if (!voiceEnabled) {
-      console.log(`[PlayerShell] Voice disabled, skipping audio for segment ${currentSegIdx}`);
+      lastAudioSegIdxRef.current = currentSegIdx;
+      onAudioEnded();
       return;
     }
     if (currentSegIdx === lastAudioSegIdxRef.current) return;
 
     const segment = segments[currentSegIdx];
     if (!segment.audio) {
-      console.log(`[PlayerShell] Segment ${currentSegIdx} (${segment.id}) has no audio field`);
       lastAudioSegIdxRef.current = currentSegIdx;
+      onAudioEnded();
       return;
     }
 
     lastAudioSegIdxRef.current = currentSegIdx;
 
-    // Pass both the URL (may be undefined) and the narration text as fallback
-    // useVoicePlayer will use ElevenLabs if URL exists, browser TTS otherwise
-    console.log(`[PlayerShell] ▶ Audio for segment ${currentSegIdx} (${segment.id}): URL=${segment.audio.url || "NONE"}, text="${segment.audio.text?.slice(0, 50)}..."`);
-
     voicePlayAudio(
       segment.audio.eventId,
       segment.audio.url,
       segment.audio.duration / 1000,
-      segment.audio.text  // fallback text for browser TTS
+      undefined,
+      () => onAudioEnded()
     );
-  }, [currentSegIdx, segments, voiceEnabled, voicePlayAudio]);
+  }, [currentSegIdx, segments, voiceEnabled, voicePlayAudio, onAudioEnded]);
 
   // ─── Voice: Preload upcoming segments' audio ───
   useEffect(() => {
@@ -476,15 +467,15 @@ export default function PlayerShell({
   );
 
   const voiceNotice = useMemo(() => {
-    if (!resolvedVoiceStatus || resolvedVoiceStatus === "ok") return null;
+    if (!resolvedVoiceStatus || resolvedVoiceStatus === "ok" || resolvedVoiceStatus === "unknown") return null;
     if (resolvedVoiceStatus === "missing_tts_permission") {
-      return "Voice disabled: ElevenLabs key is missing text_to_speech permission.";
+      return "Voice disabled: active TTS key is missing text_to_speech permission.";
     }
     if (resolvedVoiceStatus === "unauthorized") {
-      return "Voice disabled: ElevenLabs rejected the current API key.";
+      return "Voice disabled: TTS provider rejected the current API key.";
     }
     if (resolvedVoiceStatus === "rate_limited") {
-      return "Voice limited: ElevenLabs rate limit reached. Retrying automatically.";
+      return "Voice limited: TTS provider rate limit reached. Retrying automatically.";
     }
     return "Voice narration is currently unavailable. Lesson visuals continue normally.";
   }, [resolvedVoiceStatus]);
@@ -517,17 +508,18 @@ export default function PlayerShell({
       <div className="flex-1 flex overflow-hidden">
         <motion.div className="relative flex-1 p-3 overflow-hidden">
           {voiceNotice && (
-            <div className="absolute top-4 right-4 z-20 max-w-[360px] rounded-xl border border-[var(--error)]/35 bg-[var(--paper)]/96 px-3 py-2 text-[12px] text-[var(--error)] shadow-[var(--shadow-sm)] backdrop-blur-sm">
+            <div className="absolute top-[52px] right-4 z-20 max-w-[320px] rounded-xl border border-[var(--error)]/35 bg-[var(--paper)]/96 px-3 py-2 text-[12px] text-[var(--error)] shadow-[var(--shadow-sm)] backdrop-blur-sm">
               {voiceNotice}
             </div>
           )}
           {whiteboardV2Enabled ? (
-            <WhiteboardStage
+            <InteractiveLessonStage
               completedVisuals={player.completedVisuals}
               activeVisual={player.activeVisual}
               activeVisualProgress={player.activeVisualProgress}
               currentSegment={player.currentSegment}
               isPlaying={player.state.status === "playing"}
+              problemText={resolvedProblemText}
             />
           ) : (
             <WhiteboardCanvas

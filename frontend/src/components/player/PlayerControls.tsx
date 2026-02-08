@@ -135,10 +135,10 @@ export default function PlayerControls({
       {onToggleVoice && (
         <button
           onClick={onToggleVoice}
-          className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors cursor-pointer ${
+          className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-colors cursor-pointer ${
             state.voiceEnabled
-              ? "bg-[var(--emerald)] text-white"
-              : "bg-[var(--cream-dark)] text-[var(--ink-tertiary)] hover:bg-[var(--border-strong)]"
+              ? "bg-[var(--emerald)] text-white border-[var(--emerald)] shadow-[var(--shadow-sm)]"
+              : "bg-[var(--paper)] text-[var(--ink-tertiary)] border-[var(--border)] hover:bg-[var(--cream-dark)]"
           }`}
           aria-label={state.voiceEnabled ? "Mute voice" : "Enable voice"}
           title={state.voiceEnabled ? "Mute" : "Unmute"}
@@ -215,15 +215,18 @@ function ReplayIcon() {
 
 function SpeakerOnIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M2 5v4h2l3-3v6l-3-3H2a1 1 0 01-1-1V6a1 1 0 011-1z"
-        fill="currentColor"
+        d="M14 4L9.5 8H6a2 2 0 00-2 2v4a2 2 0 002 2h3.5L14 20V4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <path
-        d="M11.5 7a3.5 3.5 0 010 2.5M12.5 4a6 6 0 010 6"
+        d="M17.5 8.5a4.5 4.5 0 010 7M20 6a8 8 0 010 12"
         stroke="currentColor"
-        strokeWidth="1.2"
+        strokeWidth="1.8"
         strokeLinecap="round"
       />
     </svg>
@@ -232,15 +235,18 @@ function SpeakerOnIcon() {
 
 function SpeakerOffIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M2 5v4h2l3-3v6l-3-3H2a1 1 0 01-1-1V6a1 1 0 011-1z"
-        fill="currentColor"
+        d="M14 4L9.5 8H6a2 2 0 00-2 2v4a2 2 0 002 2h3.5L14 20V4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <path
-        d="M12.5 3.5l-2 2m0 2l2 2M10.5 3.5l2 2m0 2l-2 2"
+        d="M18 9l4 4m0-4l-4 4"
         stroke="currentColor"
-        strokeWidth="1.2"
+        strokeWidth="1.8"
         strokeLinecap="round"
       />
     </svg>

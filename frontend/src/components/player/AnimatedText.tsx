@@ -112,12 +112,12 @@ export default function AnimatedText({
   const chunks = buildChunks(text);
   const totalChunks = chunks.length;
   const totalWeight = chunks.reduce((sum, chunk) => sum + chunk.weight, 0);
-  const [revealedCount, setRevealedCount] = useState(isAnimating ? 0 : totalChunks);
+  const [revealPosition, setRevealPosition] = useState(isAnimating ? 0 : totalChunks);
   const rafRef = useRef<number>(0);
   const startRef = useRef(0);
 
-  const weightedRevealCount = useCallback((progress: number): number => {
-    if (totalChunks === 0 || totalWeight <= 0) return 0;
+  const weightedRevealPosition = useCallback((progress: number): number => {
+    if (totalChunks === 0 || totalWeight <= 0) return totalChunks;
     const phaseScale = teachingPhase === "result"
       ? 0.95
       : teachingPhase === "checkpoint"
@@ -128,13 +128,16 @@ export default function AnimatedText({
     const eased = Math.min(1, Math.max(0, progress / phaseScale));
     const targetWeight = eased * totalWeight;
     let consumed = 0;
-    let count = 0;
-    for (const chunk of chunks) {
-      consumed += chunk.weight;
-      count += 1;
-      if (consumed >= targetWeight) break;
+    for (let i = 0; i < chunks.length; i += 1) {
+      const chunkWeight = chunks[i].weight;
+      const next = consumed + chunkWeight;
+      if (targetWeight <= next) {
+        const partial = chunkWeight > 0 ? (targetWeight - consumed) / chunkWeight : 0;
+        return Math.min(totalChunks, Math.max(0, i + partial));
+      }
+      consumed = next;
     }
-    return Math.min(totalChunks, count);
+    return totalChunks;
   }, [chunks, teachingPhase, totalChunks, totalWeight]);
 
   useEffect(() => {
@@ -144,7 +147,7 @@ export default function AnimatedText({
     if (!isAnimating) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
-        if (!cancelled) setRevealedCount(totalChunks);
+        if (!cancelled) setRevealPosition(totalChunks);
       });
       return () => {
         cancelled = true;
@@ -155,16 +158,16 @@ export default function AnimatedText({
     if (totalChunks === 0) return;
     startRef.current = performance.now();
     rafRef.current = requestAnimationFrame(() => {
-      if (!cancelled) setRevealedCount(0);
+      if (!cancelled) setRevealPosition(0);
     });
     const tick = () => {
       const elapsed = performance.now() - startRef.current;
       const rawProgress = Math.min(1, elapsed / duration);
-      setRevealedCount(weightedRevealCount(rawProgress));
+      setRevealPosition(weightedRevealPosition(rawProgress));
       if (rawProgress < 1) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
-        setRevealedCount(totalChunks);
+        setRevealPosition(totalChunks);
       }
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -172,11 +175,14 @@ export default function AnimatedText({
       cancelled = true;
       cancelAnimationFrame(rafRef.current);
     };
-  }, [isAnimating, duration, totalChunks, animationProgress, weightedRevealCount]);
+  }, [isAnimating, duration, totalChunks, animationProgress, weightedRevealPosition]);
 
   const isBullet = text.match(/^(\s*[-\u2022]\s|^\s*\d+\.\s)/);
-  const visibleChunkCount =
-    animationProgress !== undefined ? weightedRevealCount(animationProgress) : revealedCount;
+  const visiblePosition =
+    animationProgress !== undefined ? weightedRevealPosition(animationProgress) : revealPosition;
+  const visibleChunkCount = Math.floor(visiblePosition);
+  const partialChunkOpacity = Math.min(1, Math.max(0, visiblePosition - visibleChunkCount));
+  const partialChunk = chunks[visibleChunkCount];
 
   return (
     <div
@@ -201,6 +207,27 @@ export default function AnimatedText({
 
         return <span key={i}>{chunk.content}</span>;
       })}
+      {partialChunk && partialChunkOpacity > 0.02 && (
+        partialChunk.type === "math" ? (
+          <span
+            className="inline mx-0.5"
+            style={{ opacity: partialChunkOpacity, transform: "translateY(0.4px)", display: "inline-block" }}
+          >
+            <InlineMath math={partialChunk.content} />
+          </span>
+        ) : partialChunk.type === "bold" ? (
+          <strong
+            className="font-semibold text-[var(--ink)]"
+            style={{ opacity: partialChunkOpacity, transform: "translateY(0.4px)", display: "inline-block" }}
+          >
+            {partialChunk.content}
+          </strong>
+        ) : (
+          <span style={{ opacity: partialChunkOpacity, transform: "translateY(0.4px)", display: "inline-block" }}>
+            {partialChunk.content}
+          </span>
+        )
+      )}
     </div>
   );
 }

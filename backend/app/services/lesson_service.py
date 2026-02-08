@@ -11,8 +11,9 @@ from app.schemas.lesson import LessonStep, LessonComplete
 
 logger = logging.getLogger(__name__)
 
-# ElevenLabs free tier allows max 2 concurrent requests
-_ELEVENLABS_CONCURRENCY = 2
+# Keep narration synthesis throttled to avoid provider rate limits.
+_TTS_CONCURRENCY = 4
+_INLINE_TTS_TIMEOUT_SECONDS = 35
 
 
 def _steps_have_audio(steps: list[dict]) -> bool:
@@ -36,7 +37,7 @@ async def _generate_audio_throttled(
 
 
 async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], str]:
-    """Generate ElevenLabs audio for every narrate event and attach URLs.
+    """Generate narration audio for every narrate event and attach URLs.
 
     Returns:
         tuple: (steps_with_audio, voice_status)
@@ -49,7 +50,7 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], s
         - "unknown"
     """
     voice_service = get_voice_service()
-    semaphore = asyncio.Semaphore(_ELEVENLABS_CONCURRENCY)
+    semaphore = asyncio.Semaphore(_TTS_CONCURRENCY)
 
     # Collect ALL narrate events across ALL steps for batch processing
     all_narrate_refs = []  # list of (step_index, event_index, original_duration)
@@ -67,7 +68,7 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], s
                     )
 
     # Generate all audio with throttled concurrency
-    print(f"[LessonService] Generating audio for {len(all_narrate_tasks)} narrate events (max {_ELEVENLABS_CONCURRENCY} concurrent)...")
+    print(f"[LessonService] Generating audio for {len(all_narrate_tasks)} narrate events (max {_TTS_CONCURRENCY} concurrent)...")
     audio_results = await asyncio.gather(*all_narrate_tasks, return_exceptions=True)
 
     # Attach audio to events
@@ -101,13 +102,13 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], s
 
     if all_narrate_refs and success_count == 0:
         print(
-            "[LessonService] WARNING: ElevenLabs did not return audio for any narrate events. "
+            "[LessonService] WARNING: Voice provider did not return audio for any narrate events. "
             f"failure_codes={failure_codes}"
         )
         if failure_codes.get("missing_tts_permission"):
             print(
-                "[LessonService] ACTION REQUIRED: Enable text_to_speech permission on ELEVENLABS_API_KEY "
-                "in ElevenLabs dashboard, then restart backend."
+                "[LessonService] ACTION REQUIRED: Enable text_to_speech permission on the active voice provider key, "
+                "then restart backend."
             )
 
     # Set step-level audio fields for backward compat
@@ -288,9 +289,45 @@ async def stream_lesson_steps(session_id: str) -> AsyncGenerator[dict, None]:
             return
         steps = session.get("steps", [])
 
-    # Never block stream on ElevenLabs audio generation.
+    # Ensure streamed steps have narration audio when possible.
+    # This prevents a "silent lesson" where background audio finishes after SSE already emitted steps.
     if steps and not _steps_have_audio(steps):
-        _schedule_background_audio_generation(session_id)
+        update_session(session_id, audio_status="in_progress", build_stage="voice_generation")
+        try:
+            steps_with_audio, voice_status = await asyncio.wait_for(
+                _enrich_steps_with_audio(copy.deepcopy(steps)),
+                timeout=_INLINE_TTS_TIMEOUT_SECONDS,
+            )
+            steps = steps_with_audio
+            update_session(
+                session_id,
+                steps=steps_with_audio,
+                step_count=len(steps_with_audio),
+                audio_status="complete" if _steps_have_audio(steps_with_audio) else "failed",
+                voice_status=voice_status,
+                build_stage="stream_ready",
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Inline audio generation timed out after %ss for session %s; continuing stream and finishing audio in background",
+                _INLINE_TTS_TIMEOUT_SECONDS,
+                session_id,
+            )
+            update_session(
+                session_id,
+                audio_status="pending",
+                build_stage="stream_ready",
+            )
+            _schedule_background_audio_generation(session_id)
+        except Exception:
+            logger.exception("Inline audio generation failed for session %s", session_id)
+            update_session(
+                session_id,
+                audio_status="pending",
+                voice_status="unknown",
+                build_stage="stream_ready",
+            )
+            _schedule_background_audio_generation(session_id)
 
     update_session(session_id, status="streaming", build_stage="streaming")
 

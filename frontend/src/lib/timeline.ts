@@ -91,6 +91,20 @@ export function convertBackendEvent(raw: Record<string, unknown>): AnimationEven
         | "checkpoint"
         | "result"
         | undefined,
+      sceneTemplate: (payload.scene_template || payload.sceneTemplate) as
+        | "given_intro"
+        | "derive_chain"
+        | "scratch_note"
+        | "final_result"
+        | undefined,
+      sceneId: (payload.scene_id || payload.sceneId) as string | undefined,
+      slotRole: (payload.slot_role || payload.slotRole) as
+        | "heading"
+        | "equation"
+        | "explanation"
+        | "result"
+        | undefined,
+      syncHoldMs: (payload.sync_hold_ms ?? payload.syncHoldMs) as number | undefined,
       boardPage: (payload.board_page ?? payload.boardPage) as number | undefined,
       lane: payload.lane as
         | "given"
@@ -326,8 +340,13 @@ export function eventsToSegments(events: AnimationEvent[]): TimelineSegment[] {
   function pushCurrent() {
     if (current) {
       current.visualDuration = current.visuals.reduce((sum, v) => sum + v.duration, 0);
+      const syncHoldMs = current.visuals.reduce(
+        (maxHold, visual) => Math.max(maxHold, visual.payload.syncHoldMs ?? 0),
+        0
+      );
+      current.syncHoldMs = syncHoldMs > 0 ? syncHoldMs : undefined;
       current.duration = Math.max(
-        current.audio?.duration ?? 0,
+        (current.audio?.duration ?? 0) + syncHoldMs,
         current.visualDuration
       );
       // Add a small minimum duration for empty segments
@@ -407,13 +426,6 @@ export function eventsToSegments(events: AnimationEvent[]): TimelineSegment[] {
 
   // Push final segment
   pushCurrent();
-
-  // Diagnostic: log segment audio state
-  const withAudio = segments.filter(s => s.audio?.url);
-  console.log(`[Timeline] Created ${segments.length} segments (${withAudio.length} with audio URLs)`);
-  if (withAudio.length === 0 && segments.some(s => s.audio)) {
-    console.warn(`[Timeline] ⚠️ Segments have audio fields but ALL URLs are missing/undefined`);
-  }
 
   return segments;
 }

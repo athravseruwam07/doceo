@@ -28,10 +28,13 @@ async def get_session_info(session_id: str):
         session_id=session["session_id"],
         title=session["title"],
         subject=session["subject"],
+        problem_text=session.get("problem_text"),
         step_count=session["step_count"],
         status=session["status"],
         voice_status=session.get("voice_status"),
         build_stage=session.get("build_stage"),
+        audio_status=session.get("audio_status"),
+        steps=session.get("steps"),
     )
 
 
@@ -49,10 +52,12 @@ async def create_session_json(body: SessionCreate):
             detail=f"AI service error: {_error_message(e)}",
         )
 
+    resolved_problem_text = (problem_text or result.get("problem_statement") or "").strip()
+
     session = create_session(
         title=result["title"],
         subject=result["subject"],
-        problem_text=problem_text,
+        problem_text=resolved_problem_text,
         step_count=len(result["steps"]),
     )
 
@@ -66,10 +71,13 @@ async def create_session_json(body: SessionCreate):
         session_id=session["session_id"],
         title=result["title"],
         subject=result["subject"],
+        problem_text=resolved_problem_text,
         step_count=len(result["steps"]),
         status=session["status"],
         voice_status=session.get("voice_status"),
         build_stage="script_ready",
+        audio_status=session.get("audio_status"),
+        steps=result["steps"],
     )
 
 
@@ -104,10 +112,12 @@ async def create_session_upload(
             detail=f"AI service error: {_error_message(e)}",
         )
 
+    resolved_problem_text = ((problem_text or "").strip() or str(result.get("problem_statement", "")).strip())
+
     session = create_session(
         title=result["title"],
         subject=result["subject"],
-        problem_text=problem_text or "",
+        problem_text=resolved_problem_text,
         image_b64=image_b64,
         step_count=len(result["steps"]),
     )
@@ -122,8 +132,11 @@ async def create_session_upload(
         session_id=session["session_id"],
         title=result["title"],
         subject=result["subject"],
+        problem_text=resolved_problem_text,
         step_count=len(result["steps"]),
         status=session["status"],
         voice_status=session.get("voice_status"),
         build_stage="script_ready",
+        audio_status=session.get("audio_status"),
+        steps=result["steps"],
     )

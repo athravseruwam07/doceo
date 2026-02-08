@@ -26,15 +26,54 @@ export default function LessonPage({ params }: LessonPageProps) {
   const chat = useChat(sessionId);
   const [buildStage, setBuildStage] = useState<BuildStage | undefined>(undefined);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus | undefined>(undefined);
+  const [problemText, setProblemText] = useState<string | undefined>(undefined);
+  const [sessionSteps, setSessionSteps] = useState<LessonStep[]>([]);
   const steps = useMemo(
     () => data.filter((event): event is LessonStep => "step_number" in event),
     [data]
   );
+  const mergedSteps = useMemo(() => {
+    if (steps.length === 0) return steps;
+    if (sessionSteps.length === 0) return steps;
+
+    const sessionStepByNumber = new Map<number, LessonStep>(
+      sessionSteps.map((step) => [step.step_number, step])
+    );
+
+    return steps.map((streamStep) => {
+      const hydrated = sessionStepByNumber.get(streamStep.step_number);
+      if (!hydrated) return streamStep;
+
+      const streamEvents = streamStep.events ?? [];
+      const hydratedEvents = hydrated.events ?? [];
+      const hydratedById = new Map(hydratedEvents.map((event) => [event.id, event]));
+
+      const mergedEvents = streamEvents.map((event) => {
+        const hydratedEvent = hydratedById.get(event.id);
+        if (!hydratedEvent) return event;
+        return {
+          ...event,
+          duration: hydratedEvent.duration ?? event.duration,
+          payload: {
+            ...event.payload,
+            ...hydratedEvent.payload,
+          },
+        };
+      });
+
+      return {
+        ...streamStep,
+        narration: hydrated.narration ?? streamStep.narration,
+        audio_url: hydrated.audio_url ?? streamStep.audio_url,
+        audio_duration: hydrated.audio_duration ?? streamStep.audio_duration,
+        events: mergedEvents,
+      };
+    });
+  }, [steps, sessionSteps]);
 
   useEffect(() => {
     if (steps.length > 0 || error) {
       clearLoadingPersistence(persistKey);
-      return;
     }
 
     let active = true;
@@ -46,10 +85,14 @@ export default function LessonPage({ params }: LessonPageProps) {
         if (!active) return;
         setBuildStage(session.build_stage as BuildStage | undefined);
         setVoiceStatus(session.voice_status as VoiceStatus | undefined);
+        setProblemText(session.problem_text);
+        if (Array.isArray(session.steps) && session.steps.length > 0) {
+          setSessionSteps(session.steps);
+        }
       } catch {
         // ignore poll errors while loading
       } finally {
-        if (active) timer = window.setTimeout(poll, 1200);
+        if (active) timer = window.setTimeout(poll, 1500);
       }
     };
 
@@ -102,11 +145,12 @@ export default function LessonPage({ params }: LessonPageProps) {
   return (
     <PlayerShell
       sessionId={sessionId}
-      steps={steps}
+      steps={mergedSteps}
       messages={chat.messages}
       chatLoading={chat.loading}
       onSendMessage={chat.sendMessage}
       voiceStatus={voiceStatus}
+      problemText={problemText}
     />
   );
 }

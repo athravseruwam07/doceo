@@ -1,5 +1,6 @@
 """Audio serving endpoint."""
 
+import mimetypes
 import os
 
 from fastapi import APIRouter, HTTPException, Query
@@ -12,7 +13,7 @@ router = APIRouter()
 
 @router.get("/health")
 async def voice_health(force: bool = Query(default=False)):
-    """Return ElevenLabs voice capability status."""
+    """Return voice provider capability status."""
     service = get_voice_service()
     health = await service.get_health(force=force)
     return health
@@ -38,4 +39,5 @@ async def serve_audio(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Audio file not found")
 
-    return FileResponse(file_path, media_type="audio/mpeg")
+    media_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    return FileResponse(file_path, media_type=media_type)

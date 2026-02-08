@@ -120,7 +120,7 @@ export default function LessonLoadingScreen({
   const phaseLabel = phase === "intake" ? "Phase 1 · Intake" : "Phase 2 · Lesson Build";
   const voiceWarning =
     voiceStatus && voiceStatus !== "ok"
-      ? "Voice narration may be unavailable. Check ElevenLabs key permissions."
+      ? "Voice narration may be temporarily unavailable. Retrying automatically."
       : null;
 
   return (
@@ -140,7 +140,7 @@ export default function LessonLoadingScreen({
             Building your lesson
           </h2>
           <p className="text-[13px] text-[var(--ink-tertiary)] font-[family-name:var(--font-body)]">
-            This usually takes 15–30 seconds
+            This usually takes 30–60 seconds
           </p>
         </div>
 

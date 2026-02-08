@@ -31,7 +31,7 @@ class AnimationEventPayload(BaseModel):
     target_id: Optional[str] = None
     step_number: Optional[int] = None
     step_title: Optional[str] = None
-    # Voice fields — populated by backend after ElevenLabs generation
+    # Voice fields — populated by backend after narration generation
     audio_url: Optional[str] = None
     audio_duration: Optional[float] = None
     # Whiteboard placement
@@ -51,6 +51,22 @@ class AnimationEventPayload(BaseModel):
     teaching_phase: Optional[Literal["setup", "derive", "checkpoint", "result"]] = Field(
         default=None,
         validation_alias=AliasChoices("teaching_phase", "teachingPhase"),
+    )
+    scene_template: Optional[Literal["given_intro", "derive_chain", "scratch_note", "final_result"]] = Field(
+        default=None,
+        validation_alias=AliasChoices("scene_template", "sceneTemplate"),
+    )
+    scene_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("scene_id", "sceneId"),
+    )
+    slot_role: Optional[Literal["heading", "equation", "explanation", "result"]] = Field(
+        default=None,
+        validation_alias=AliasChoices("slot_role", "slotRole"),
+    )
+    sync_hold_ms: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("sync_hold_ms", "syncHoldMs"),
     )
     board_page: Optional[int] = Field(
         default=None,

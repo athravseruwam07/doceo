@@ -6,12 +6,12 @@ import { AnimationEvent, BoardAnchor, TimelineSegment } from "@/lib/types";
 import { useTheme } from "@/hooks/useTheme";
 import {
   ANCHOR_LABELS,
-  ANCHOR_BOUNDS,
   BOARD_HEIGHT,
   BOARD_WIDTH,
   BoardObject,
   buildBoardSnapshot,
   placeActiveEvent,
+  getEffectiveBounds,
 } from "@/lib/boardLayout";
 import AnimatedEquation from "./AnimatedEquation";
 import AnimatedText from "./AnimatedText";
@@ -22,6 +22,7 @@ interface WhiteboardStageProps {
   activeVisualProgress: number;
   currentSegment: TimelineSegment | null;
   isPlaying: boolean;
+  overlayActive?: boolean;
 }
 
 interface StageSize {
@@ -298,11 +299,9 @@ function annotationShape(
       width={target.width + 16}
       height={target.height + 16}
       stroke={palette.accent}
-      strokeWidth={3}
+      strokeWidth={2.5}
       cornerRadius={8}
-      shadowColor={palette.accent}
-      shadowBlur={6}
-      shadowOpacity={0.26}
+      shadowBlur={0}
     />
   );
 }
@@ -326,7 +325,7 @@ function renderTextObject(
   return (
     <div
       key={key}
-      className={`board-v2-item ${isActive && (obj.anchor === "work" || obj.anchor === "final") ? "is-active" : ""} ${isDark ? "is-dark" : "is-light"}`}
+      className={`board-v2-item ${isDark ? "is-dark" : "is-light"}`}
       style={{ left, top, width, minHeight }}
     >
       {obj.type === "write_equation" ? (
@@ -392,10 +391,14 @@ export default function WhiteboardStage({
   activeVisualProgress,
   currentSegment,
   isPlaying,
+  overlayActive,
 }: WhiteboardStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<StageSize>({ width: 1200, height: 760 });
-  const [scratchTrayOpen, setScratchTrayOpen] = useState(false);
+  const [scratchTrayState, setScratchTrayState] = useState<{ open: boolean; step: number | null }>({
+    open: false,
+    step: null,
+  });
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
@@ -445,12 +448,27 @@ export default function WhiteboardStage({
   const offsetX = (stageSize.width - contentWidth) / 2;
   const offsetY = (stageSize.height - contentHeight) / 2;
   const compactMode = stageSize.width < 980;
-  const isScratchTrayOpen = compactMode && scratchTrayOpen;
+  const currentStepNumber = currentSegment?.stepNumber ?? null;
+  const isScratchTrayOpen =
+    compactMode &&
+    scratchTrayState.open &&
+    scratchTrayState.step === currentStepNumber &&
+    !overlayActive;
 
   const pageObjects = useMemo(
     () => snapshot.objects.filter((obj) => obj.page === currentPage),
     [snapshot.objects, currentPage]
   );
+
+  const hasScratchContent = useMemo(
+    () => pageObjects.some((obj) => obj.anchor === "scratch"),
+    [pageObjects]
+  );
+  const { bounds: effectiveBounds, labels: effectiveLabels } = useMemo(
+    () => getEffectiveBounds(hasScratchContent),
+    [hasScratchContent]
+  );
+
   const scratchObjects = useMemo(
     () => pageObjects.filter((obj) => obj.anchor === "scratch"),
     [pageObjects]
@@ -475,22 +493,29 @@ export default function WhiteboardStage({
     : null;
   const cueStyle = cueTarget
     ? {
-        left: offsetX + (ANCHOR_BOUNDS.work.x + 92) * scale,
+        left: offsetX + (effectiveBounds.work.x + 92) * scale,
         top: offsetY + cueTarget.y * scale - 2,
         width: Math.max(2, scale * 2.5),
         height: cueTarget.height * scale + 4,
       }
     : null;
+  const activeLineStyle = cueTarget
+    ? {
+        left: offsetX + cueTarget.x * scale,
+        top: offsetY + (cueTarget.y + cueTarget.height + 4) * scale,
+        width: cueTarget.width * scale,
+      }
+    : null;
 
   const derivationGuideStyle = {
-    left: offsetX + (ANCHOR_BOUNDS.work.x + 96) * scale,
-    top: offsetY + (ANCHOR_BOUNDS.work.y + 6) * scale,
-    height: (ANCHOR_BOUNDS.work.height - 12) * scale,
+    left: offsetX + (effectiveBounds.work.x + 96) * scale,
+    top: offsetY + (effectiveBounds.work.y + 6) * scale,
+    height: (effectiveBounds.work.height - 12) * scale,
   };
   const labelAnchors = collectVisibleLabels(
     visiblePageObjects,
     cueObject?.anchor ?? activeOnPage?.anchor ?? null
-  );
+  ).filter((anchor) => hasScratchContent || anchor !== "scratch");
   const derivationGuide = isDark ? "rgba(178, 214, 242, 0.12)" : "rgba(53, 105, 138, 0.14)";
 
   return (
@@ -545,10 +570,10 @@ export default function WhiteboardStage({
           <Layer x={offsetX} y={offsetY} scaleX={scale} scaleY={scale}>
             <Line
               points={[
-                ANCHOR_BOUNDS.final.x + 8,
-                ANCHOR_BOUNDS.final.y - 8,
-                ANCHOR_BOUNDS.final.x + ANCHOR_BOUNDS.final.width - 8,
-                ANCHOR_BOUNDS.final.y - 8,
+                effectiveBounds.final.x + 8,
+                effectiveBounds.final.y - 8,
+                effectiveBounds.final.x + effectiveBounds.final.width - 8,
+                effectiveBounds.final.y - 8,
               ]}
               stroke={isDark ? "rgba(177, 209, 236, 0.1)" : "rgba(40, 90, 124, 0.12)"}
               strokeWidth={1}
@@ -556,10 +581,10 @@ export default function WhiteboardStage({
             />
             <Line
               points={[
-                ANCHOR_BOUNDS.work.x + 96,
-                ANCHOR_BOUNDS.work.y + 8,
-                ANCHOR_BOUNDS.work.x + 96,
-                ANCHOR_BOUNDS.work.y + ANCHOR_BOUNDS.work.height - 12,
+                effectiveBounds.work.x + 96,
+                effectiveBounds.work.y + 8,
+                effectiveBounds.work.x + 96,
+                effectiveBounds.work.y + effectiveBounds.work.height - 12,
               ]}
               stroke={derivationGuide}
               strokeWidth={1.5}
@@ -571,9 +596,9 @@ export default function WhiteboardStage({
                 : (
               <Text
                 key={anchor}
-                x={ANCHOR_LABELS[anchor].x}
-                y={ANCHOR_LABELS[anchor].y}
-                text={ANCHOR_LABELS[anchor].text}
+                x={effectiveLabels[anchor].x}
+                y={effectiveLabels[anchor].y}
+                text={effectiveLabels[anchor].text}
                 fontSize={22}
                 fill={palette.label}
                 fontStyle="bold"
@@ -645,13 +670,24 @@ export default function WhiteboardStage({
             style={cueStyle}
           />
         )}
+        {activeLineStyle && (
+          <div
+            className={`board-v2-active-line ${isPlaying ? "is-playing" : "is-paused"}`}
+            style={activeLineStyle}
+          />
+        )}
 
         {compactMode && (
           <div className={`board-v2-scratch-tray ${isScratchTrayOpen ? "is-open" : ""}`}>
             <button
               className="board-v2-scratch-toggle"
               type="button"
-              onClick={() => setScratchTrayOpen((prev) => !prev)}
+              onClick={() =>
+                setScratchTrayState((prev) => ({
+                  open: !(prev.open && prev.step === currentStepNumber),
+                  step: currentStepNumber,
+                }))
+              }
             >
               Scratch
               <span>{scratchObjects.length}</span>

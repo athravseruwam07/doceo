@@ -242,11 +242,13 @@ def _build_lesson_generation_prompt(problem_text: str, image_b64: str | None) ->
 
 PROBLEM: {problem_text}
 
-Create a step-by-step lesson. For EACH step, script the exact sequence of teaching actions (events). The board does NOT scroll like a document. Use a strict classroom flow with semantic lanes (Given/Derivation/Scratch/Final) and clean page turns.
+Create a step-by-step lesson. For EACH step, script teaching actions (events) with clean classroom rhythm.
+The board does NOT scroll like a document. Use semantic lanes (Given/Derivation/Scratch/Final) and scene templates.
 
 Return valid JSON (no markdown, no code blocks) with this structure:
 
 {{
+  "problem_statement": "The exact problem statement, word-for-word. If image-based, transcribe it faithfully.",
   "title": "Clear lesson title",
   "subject": "Subject area (Algebra, Calculus, Physics, etc.)",
   "steps": [
@@ -255,8 +257,8 @@ Return valid JSON (no markdown, no code blocks) with this structure:
       "title": "Step title",
       "events": [
         {{"type": "narrate", "text": "What the professor says aloud"}},
-        {{"type": "write_equation", "latex": "x^2 + 3x + 2 = 0", "display": true, "zone": "main", "anchor": "work", "lane": "derivation", "intent": "derive", "align": "left", "transform_chain_id": "c1"}},
-        {{"type": "write_text", "text": "Given:", "zone": "given", "anchor": "given", "intent": "introduce", "align": "left"}},
+        {{"type": "write_equation", "latex": "x^2 + 3x + 2 = 0", "display": true, "zone": "main", "anchor": "work", "lane": "derivation", "intent": "derive", "transform_chain_id": "c1", "scene_template": "derive_chain", "scene_id": "c1", "slot_role": "equation", "sync_hold_ms": 140}},
+        {{"type": "write_text", "text": "Given:", "zone": "given", "anchor": "given", "intent": "introduce", "scene_template": "given_intro", "scene_id": "given-1", "slot_role": "heading", "sync_hold_ms": 120}},
         {{"type": "annotate", "target": "previous", "style": "highlight"}},
         {{"type": "draw_arrow", "x1": 1110, "y1": 180, "x2": 1360, "y2": 280, "zone": "scratch", "anchor": "scratch", "intent": "side_note", "label": "substitute"}},
         {{"type": "clear_section", "clear_target": "zone", "clear_zone": "scratch"}},
@@ -268,8 +270,8 @@ Return valid JSON (no markdown, no code blocks) with this structure:
 
 EVENT TYPES (use these to choreograph each step):
 - "narrate": Professor speaks aloud; paired visuals play while narration runs
-- "write_equation": Write LaTeX on board. Fields: latex, display, zone, anchor, optional x/y
-- "write_text": Write short label on board. Fields: text, zone, anchor, optional x/y
+- "write_equation": Write LaTeX on board. Fields: latex, display, zone, anchor, lane, transform_chain_id, scene_template, scene_id, slot_role
+- "write_text": Write short label on board. Fields: text, zone, anchor, lane, scene_template, scene_id, slot_role
 - "annotate": highlight/underline/circle/box an existing target. Fields: style, target
 - "draw_line": x1,y1,x2,y2
 - "draw_arrow": x1,y1,x2,y2, optional label
@@ -286,7 +288,7 @@ BOARD RULES:
 3. Use zone + anchor + lane together when possible:
    given=(zone:given, anchor:given, lane:given), derivation=(main,work,derivation), scratch=(scratch,scratch,scratch), final=(final,final,final)
 4. Emit transform_chain_id for linked derivation equations so they stay vertically coherent.
-5. Prefer lane/anchor placement and only use x/y when precision matters.
+5. Prefer lane/anchor placement. Avoid x/y/width/height unless drawing a diagram that truly needs coordinates.
 6. When space is needed, clear scratch first; if still long, continue on next board page.
 7. Keep given and final content persistent unless explicitly clearing.
 
@@ -305,7 +307,12 @@ CRITICAL CHOREOGRAPHY RULES:
 12. NEVER put verbatim equation text in narration — describe equations in spoken language
 13. Every step must include at least: 1 narrate, 2 visual events, and 1 annotation/emphasis event
 14. Use intent tags when possible: introduce, derive, emphasize, result, side_note
-15. For longer steps, include board_page markers and continue sequence naturally (no random overlap)
+15. Prefer scene templates:
+   - given_intro for setup
+   - derive_chain for transformations
+   - scratch_note for side work
+   - final_result for final answer
+16. Use sync_hold_ms (100-320) to keep narration and visual transitions natural.
 
 EXAMPLE:
 {{
@@ -353,8 +360,8 @@ Respond as valid JSON (no markdown, no code blocks) with this structure:
   ],
   "related_step": null,
   "events": [
-    {{"type": "write_text", "text": "Quick note", "zone": "scratch", "anchor": "scratch", "intent": "side_note"}},
-    {{"type": "write_equation", "latex": "x = 4", "display": true, "zone": "scratch", "anchor": "scratch", "intent": "derive"}},
+    {{"type": "write_text", "text": "Quick note", "zone": "scratch", "anchor": "scratch", "intent": "side_note", "scene_template": "scratch_note", "slot_role": "explanation"}},
+    {{"type": "write_equation", "latex": "x = 4", "display": true, "zone": "scratch", "anchor": "scratch", "intent": "derive", "scene_template": "scratch_note", "slot_role": "equation", "sync_hold_ms": 140}},
     {{"type": "annotate", "target": "previous", "style": "box"}}
   ]
 }}
@@ -413,6 +420,8 @@ _ALLOWED_ZONES = {"given", "main", "scratch", "final"}
 _ALLOWED_INTENTS = {"introduce", "derive", "emphasize", "result", "side_note"}
 _ALLOWED_LANES = {"given", "derivation", "scratch", "final"}
 _ALLOWED_TEACHING_PHASES = {"setup", "derive", "checkpoint", "result"}
+_ALLOWED_SCENE_TEMPLATES = {"given_intro", "derive_chain", "scratch_note", "final_result"}
+_ALLOWED_SLOT_ROLES = {"heading", "equation", "explanation", "result"}
 _LANE_HEIGHT_BUDGET = {
     "given": 168.0,
     "derivation": 444.0,
@@ -455,6 +464,43 @@ def _default_anchor_for_event(event_type: str, payload: dict) -> str:
     return "work"
 
 
+def _infer_scene_template(anchor: str, event_type: str) -> str:
+    if anchor == "given":
+        return "given_intro"
+    if anchor == "scratch":
+        return "scratch_note"
+    if anchor == "final":
+        return "final_result"
+    if event_type == "write_equation":
+        return "derive_chain"
+    return "derive_chain"
+
+
+def _infer_slot_role(event_type: str, payload: dict, anchor: str) -> str:
+    if anchor == "final" or payload.get("intent") == "result":
+        return "result"
+    if event_type == "write_equation":
+        return "equation"
+    if event_type == "write_text":
+        text = str(payload.get("text", "")).strip().lower()
+        if text.endswith(":") or text in {"given", "work", "scratch", "final"}:
+            return "heading"
+        return "explanation"
+    return "explanation"
+
+
+def _default_sync_hold_ms(payload: dict) -> float:
+    phase = payload.get("teaching_phase")
+    intent = payload.get("intent")
+    if phase == "result" or intent == "result":
+        return 280.0
+    if phase == "checkpoint" or intent == "emphasize":
+        return 220.0
+    if phase == "setup":
+        return 160.0
+    return 120.0
+
+
 def _normalize_payload_semantics(payload: dict, event_type: str) -> None:
     lane = payload.get("lane")
     if lane in _ALLOWED_LANES:
@@ -495,6 +541,24 @@ def _normalize_payload_semantics(payload: dict, event_type: str) -> None:
             payload["teaching_phase"] = "checkpoint"
         else:
             payload["teaching_phase"] = "derive"
+
+    if payload.get("scene_template") not in _ALLOWED_SCENE_TEMPLATES:
+        payload["scene_template"] = _infer_scene_template(payload["anchor"], event_type)
+
+    if payload.get("slot_role") not in _ALLOWED_SLOT_ROLES:
+        payload["slot_role"] = _infer_slot_role(event_type, payload, payload["anchor"])
+
+    scene_id = payload.get("scene_id")
+    if not isinstance(scene_id, str) or not scene_id.strip():
+        chain = payload.get("transform_chain_id")
+        if isinstance(chain, str) and chain.strip():
+            payload["scene_id"] = chain.strip()
+        else:
+            payload["scene_id"] = f"{payload['lane']}-{payload['anchor']}"
+
+    sync_hold_ms = payload.get("sync_hold_ms")
+    if not isinstance(sync_hold_ms, (int, float)):
+        payload["sync_hold_ms"] = _default_sync_hold_ms(payload)
 
 
 def _clamp_payload_coordinates(payload: dict) -> None:
@@ -584,6 +648,21 @@ def _build_common_payload(raw: dict) -> dict:
     teaching_phase = raw.get("teaching_phase") or raw.get("teachingPhase")
     if teaching_phase in _ALLOWED_TEACHING_PHASES:
         payload["teaching_phase"] = teaching_phase
+    scene_template = raw.get("scene_template") or raw.get("sceneTemplate")
+    if scene_template in _ALLOWED_SCENE_TEMPLATES:
+        payload["scene_template"] = scene_template
+    scene_id = raw.get("scene_id") or raw.get("sceneId")
+    if isinstance(scene_id, str) and scene_id.strip():
+        payload["scene_id"] = scene_id.strip()
+    slot_role = raw.get("slot_role") or raw.get("slotRole")
+    if slot_role in _ALLOWED_SLOT_ROLES:
+        payload["slot_role"] = slot_role
+    sync_hold_ms_raw = raw.get("sync_hold_ms")
+    if sync_hold_ms_raw is None:
+        sync_hold_ms_raw = raw.get("syncHoldMs")
+    sync_hold_ms = _coerce_float(sync_hold_ms_raw)
+    if sync_hold_ms is not None:
+        payload["sync_hold_ms"] = max(0.0, min(sync_hold_ms, 1200.0))
     render_order = raw.get("render_order")
     if render_order is None:
         render_order = raw.get("renderOrder")
@@ -1175,6 +1254,7 @@ def _parse_lesson_response(response_text: str) -> dict:
             raise ValueError("Gemini lesson response contained no valid steps.")
 
         return {
+            "problem_statement": str(data.get("problem_statement", "")).strip(),
             "title": data["title"],
             "subject": data["subject"],
             "steps": processed_steps,

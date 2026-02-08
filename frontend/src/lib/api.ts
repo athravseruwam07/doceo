@@ -152,7 +152,7 @@ export async function getSessionInfo(sessionId: string): Promise<SessionResponse
 }
 
 export async function getVoiceHealth(): Promise<{ status: string; detail?: string }> {
-  const res = await fetch(`${BASE}/audio/health`);
+  const res = await fetch(`${BASE}/audio/health?force=true`, { cache: "no-store" });
   if (!res.ok) {
     const msg = await extractErrorMessage(res, `Voice health failed (${res.status})`);
     throw new Error(msg);

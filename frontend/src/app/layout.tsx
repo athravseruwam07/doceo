@@ -31,7 +31,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-theme="light" suppressHydrationWarning>
-      <body className={`${crimson.variable} ${sourceSans.variable}`}>
+      <body
+        className={`${crimson.variable} ${sourceSans.variable}`}
+        suppressHydrationWarning
+      >
         <ThemeProvider>
           <VoiceProvider>{children}</VoiceProvider>
         </ThemeProvider>

@@ -29,7 +29,7 @@ app.include_router(voice.router, prefix="/sessions", tags=["voice"])
 
 @app.on_event("startup")
 async def report_voice_health() -> None:
-    """Log ElevenLabs readiness once at startup."""
+    """Log active voice provider readiness once at startup."""
     try:
         health = await get_voice_service().get_health(force=True)
         logger.info(

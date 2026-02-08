@@ -755,12 +755,8 @@ body {
 .board-v2-item {
   position: absolute;
   pointer-events: none;
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 2px 4px;
-}
-
-.board-v2-item.is-active {
-  animation: board-v2-active-glow 1.8s ease-in-out infinite;
 }
 
 .board-v2-item .equation-reveal {
@@ -776,20 +772,11 @@ body {
 }
 
 .board-v2-shell.is-light .board-v2-item .typewriter-line {
-  color: color-mix(in srgb, var(--board-ink) 78%, transparent);
+  color: color-mix(in srgb, var(--board-ink) 82%, transparent);
 }
 
 .board-v2-shell.is-dark .board-v2-item .typewriter-line {
-  color: color-mix(in srgb, var(--board-ink) 80%, transparent);
-}
-
-@keyframes board-v2-active-glow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--board-focus) 0%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 0 5px color-mix(in srgb, var(--board-focus) 10%, transparent);
-  }
+  color: color-mix(in srgb, var(--board-ink) 84%, transparent);
 }
 
 .board-v2-derivation-guide {
@@ -809,8 +796,8 @@ body {
   position: absolute;
   pointer-events: none;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--board-focus) 72%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--board-focus) 14%, transparent);
+  background: color-mix(in srgb, var(--board-focus) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--board-focus) 10%, transparent);
   z-index: 4;
   transition: left 180ms var(--ease-out), top 180ms var(--ease-out), height 180ms var(--ease-out);
 }
@@ -820,6 +807,25 @@ body {
 }
 
 .board-v2-row-marker.is-paused {
+  opacity: 0.55;
+}
+
+.board-v2-active-line {
+  position: absolute;
+  pointer-events: none;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--board-focus) 68%, transparent);
+  z-index: 4;
+  transform-origin: left center;
+  transition: left 180ms var(--ease-out), top 180ms var(--ease-out), width 180ms var(--ease-out);
+}
+
+.board-v2-active-line.is-playing {
+  animation: board-v2-line-breathe 1.3s ease-in-out infinite;
+}
+
+.board-v2-active-line.is-paused {
   opacity: 0.7;
 }
 
@@ -921,10 +927,21 @@ body {
 
 @keyframes board-v2-row-pulse {
   0%, 100% {
-    opacity: 0.6;
+    opacity: 0.42;
   }
   50% {
-    opacity: 1;
+    opacity: 0.92;
+  }
+}
+
+@keyframes board-v2-line-breathe {
+  0%, 100% {
+    opacity: 0.52;
+    transform: scaleX(0.98);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scaleX(1);
   }
 }
 

@@ -43,8 +43,8 @@ async def handle_message(session_id: str, message: str, context: dict | None = N
     response["audio_duration"] = audio_data.get("duration", 0)
     if not response["audio_url"] and audio_data.get("error_code") == "missing_tts_permission":
         print(
-            "[ChatService] ElevenLabs missing text_to_speech permission for current API key. "
-            "Returning chat response without ElevenLabs audio."
+            "[ChatService] Voice provider key is missing text_to_speech permission. "
+            "Returning chat response without narration audio."
         )
 
     # Store tutor response

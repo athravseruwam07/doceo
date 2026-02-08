@@ -25,9 +25,7 @@ export function useVoicePlayer() {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        console.log(`[Voice] Browser TTS: ${voices.length} voices loaded`);
-      }
+      void voices;
     };
     loadVoices();
     window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
@@ -52,7 +50,7 @@ export function useVoicePlayer() {
    * Speak text using browser Web Speech API (fallback when no audio URL)
    */
   const speakText = useCallback(
-    (text: string, rate: number = 1) => {
+    (text: string, rate: number = 1, onEnded?: () => void) => {
       if (typeof window === "undefined" || !window.speechSynthesis) {
         console.warn("[Voice] speechSynthesis not available");
         return;
@@ -86,11 +84,13 @@ export function useVoicePlayer() {
         isSpeakingRef.current = false;
         utteranceRef.current = null;
         pendingTextRef.current = null;
+        onEnded?.();
       };
       utterance.onerror = () => {
         isSpeakingRef.current = false;
         utteranceRef.current = null;
         pendingTextRef.current = null;
+        onEnded?.();
       };
 
       utteranceRef.current = utterance;
@@ -98,7 +98,6 @@ export function useVoicePlayer() {
       pendingTextRef.current = text;
       pendingRateRef.current = rate;
       window.speechSynthesis.speak(utterance);
-      console.log(`[Voice] Speaking via browser TTS (rate=${rate}): "${text.slice(0, 60)}..."`);
     },
     []
   );
@@ -127,26 +126,26 @@ export function useVoicePlayer() {
       eventId: string,
       audioUrl: string | null | undefined,
       _duration: number,
-      fallbackText?: string
+      fallbackText?: string,
+      onEnded?: () => void
     ) => {
       if (!enabled) {
-        console.log(`[Voice] playAudio: voice disabled, skipping ${eventId}`);
+        onEnded?.();
         return;
       }
 
-      // Path 1: ElevenLabs audio URL available
+      // Path 1: generated narration audio URL available
       if (audioUrl && audioPlayer) {
-        console.log(`[Voice] Playing ElevenLabs audio for ${eventId}: ${audioUrl}`);
         try {
           await audioPlayer.preloadSegment(eventId, audioUrl);
-          await audioPlayer.playSegment(eventId, audioUrl);
-          console.log(`[Voice] ElevenLabs playback succeeded for ${eventId}`);
+          await audioPlayer.playSegment(eventId, audioUrl, onEnded);
         } catch (error) {
-          console.error(`[Voice] ElevenLabs playback failed for ${eventId}:`, error);
+          console.error(`[Voice] Narration playback failed for ${eventId}:`, error);
           // Fall through to browser TTS
           if (fallbackText) {
-            console.log(`[Voice] Falling back to browser TTS for ${eventId}`);
-            speakText(fallbackText, playbackRate);
+            speakText(fallbackText, playbackRate, onEnded);
+          } else {
+            onEnded?.();
           }
         }
         return;
@@ -154,12 +153,12 @@ export function useVoicePlayer() {
 
       // Path 2: No audio URL — use browser TTS fallback
       if (fallbackText) {
-        console.log(`[Voice] No audio URL for ${eventId}, using browser TTS`);
-        speakText(fallbackText, playbackRate);
+        speakText(fallbackText, playbackRate, onEnded);
         return;
       }
 
       console.warn(`[Voice] No audio URL and no fallback text for ${eventId}`);
+      onEnded?.();
     },
     [enabled, audioPlayer, speakText, playbackRate]
   );

@@ -18,9 +18,19 @@ interface PageState {
   lanes: Record<BoardLane, LaneState>;
 }
 
+type SceneTemplate = "given_intro" | "derive_chain" | "scratch_note" | "final_result";
+type SlotRole = "heading" | "equation" | "explanation" | "result";
+
 const LANE_BOUNDS: Record<BoardLane, Bounds> = {
   given: { x: 72, y: 56, width: 920, height: 168 },
   derivation: { x: 86, y: 248, width: 936, height: 444 },
+  scratch: { x: 1044, y: 66, width: 506, height: 638 },
+  final: { x: 72, y: 724, width: 1482, height: 132 },
+};
+
+const LANE_BOUNDS_EXPANDED: Record<BoardLane, Bounds> = {
+  given: { x: 72, y: 56, width: 1482, height: 168 },
+  derivation: { x: 86, y: 248, width: 1420, height: 444 },
   scratch: { x: 1044, y: 66, width: 506, height: 638 },
   final: { x: 72, y: 724, width: 1482, height: 132 },
 };
@@ -172,8 +182,8 @@ function latexComplexity(latex: string): number {
   return latex.length * 0.55 + operators * 7 + radicals * 12 + fractions * 14;
 }
 
-function estimateEventFootprint(event: AnimationEvent, lane: BoardLane): { width: number; height: number } {
-  const laneWidth = LANE_BOUNDS[lane].width - 12;
+function estimateEventFootprint(event: AnimationEvent, lane: BoardLane, laneBounds: Record<BoardLane, Bounds> = LANE_BOUNDS): { width: number; height: number } {
+  const laneWidth = laneBounds[lane].width - 12;
 
   const diagramSizedByPayload =
     event.type === "draw_line" ||
@@ -277,13 +287,13 @@ function shouldAutoChain(event: AnimationEvent): boolean {
   return event.type === "write_equation" || event.type === "write_text";
 }
 
-function makePageState(): PageState {
+function makePageState(laneBounds: Record<BoardLane, Bounds> = LANE_BOUNDS): PageState {
   return {
     lanes: {
-      given: { y: LANE_BOUNDS.given.y + 8, slotIndex: 0 },
-      derivation: { y: LANE_BOUNDS.derivation.y + 8, slotIndex: 0 },
-      scratch: { y: LANE_BOUNDS.scratch.y + 8, slotIndex: 0 },
-      final: { y: LANE_BOUNDS.final.y + 8, slotIndex: 0 },
+      given: { y: laneBounds.given.y + 8, slotIndex: 0 },
+      derivation: { y: laneBounds.derivation.y + 8, slotIndex: 0 },
+      scratch: { y: laneBounds.scratch.y + 8, slotIndex: 0 },
+      final: { y: laneBounds.final.y + 8, slotIndex: 0 },
     },
   };
 }
@@ -346,8 +356,8 @@ function cloneSegments(segments: TimelineSegment[]): TimelineSegment[] {
   }));
 }
 
-function laneX(lane: BoardLane, event: AnimationEvent, width: number): number {
-  const bounds = LANE_BOUNDS[lane];
+function laneX(lane: BoardLane, event: AnimationEvent, width: number, laneBounds: Record<BoardLane, Bounds> = LANE_BOUNDS): number {
+  const bounds = laneBounds[lane];
   if (typeof event.payload.x === "number") {
     return clamp(event.payload.x, bounds.x + 4, bounds.x + bounds.width - width - 4);
   }
@@ -366,8 +376,8 @@ function laneX(lane: BoardLane, event: AnimationEvent, width: number): number {
   return bounds.x + 12;
 }
 
-function laneBottom(lane: BoardLane): number {
-  const bounds = LANE_BOUNDS[lane];
+function laneBottom(lane: BoardLane, laneBounds: Record<BoardLane, Bounds> = LANE_BOUNDS): number {
+  const bounds = laneBounds[lane];
   return bounds.y + bounds.height - 8;
 }
 
@@ -399,6 +409,50 @@ function reserveHeight(event: AnimationEvent, fallbackHeight: number): number {
   return clamp(fallbackHeight, 28, 240);
 }
 
+function sceneTemplateForLane(lane: BoardLane): SceneTemplate {
+  if (lane === "given") return "given_intro";
+  if (lane === "scratch") return "scratch_note";
+  if (lane === "final") return "final_result";
+  return "derive_chain";
+}
+
+function slotRoleForEvent(event: AnimationEvent, lane: BoardLane): SlotRole {
+  if (lane === "final" || event.payload.intent === "result") return "result";
+  if (event.type === "write_equation") return "equation";
+  if (event.type === "write_text") {
+    const text = (event.payload.text ?? "").trim().toLowerCase();
+    if (text.endsWith(":") || text === "given" || text === "work" || text === "final") {
+      return "heading";
+    }
+    return "explanation";
+  }
+  return "explanation";
+}
+
+function defaultSyncHoldMs(event: AnimationEvent): number {
+  if (typeof event.payload.syncHoldMs === "number") return event.payload.syncHoldMs;
+  if (event.payload.teachingPhase === "result" || event.payload.intent === "result") return 280;
+  if (event.payload.teachingPhase === "checkpoint" || event.payload.intent === "emphasize") return 220;
+  if (event.payload.teachingPhase === "setup") return 160;
+  return 120;
+}
+
+function applyTemplateMetadata(
+  event: AnimationEvent,
+  lane: BoardLane,
+  fallbackSceneId: string
+): void {
+  const template = event.payload.sceneTemplate ?? sceneTemplateForLane(lane);
+  event.payload.sceneTemplate = template;
+  event.payload.slotRole = event.payload.slotRole ?? slotRoleForEvent(event, lane);
+  event.payload.sceneId =
+    event.payload.sceneId ??
+    event.payload.transformChainId ??
+    event.payload.groupId ??
+    fallbackSceneId;
+  event.payload.syncHoldMs = defaultSyncHoldMs(event);
+}
+
 function applyPlacement(
   event: AnimationEvent,
   page: number,
@@ -418,13 +472,28 @@ function applyPlacement(
   event.payload.height = height;
   event.payload.reserveHeight = reserveHeight(event, height);
   event.payload.layoutLocked = true;
+  applyTemplateMetadata(event, lane, `${lane}-${page}-${slotIndex}`);
 }
 
 function planVisuals(
   planned: TimelineSegment[],
   pageBudget: number
 ): TimelineSegment[] {
-  const pages: PageState[] = [makePageState()];
+  // First pass: detect if any event targets the scratch lane
+  let hasScratch = false;
+  for (const segment of planned) {
+    for (const event of segment.visuals) {
+      if (isVisual(event) && laneFromEvent(event) === "scratch") {
+        hasScratch = true;
+        break;
+      }
+    }
+    if (hasScratch) break;
+  }
+
+  const activeBounds = hasScratch ? LANE_BOUNDS : LANE_BOUNDS_EXPANDED;
+
+  const pages: PageState[] = [makePageState(activeBounds)];
   const chainState = new Map<
     string,
     { page: number; x: number; nextY: number; nextSlotIndex: number }
@@ -454,8 +523,8 @@ function planVisuals(
         event.payload.transformChainId = lastDerivationChain;
       }
 
-      const bounds = LANE_BOUNDS[lane];
-      const footprint = estimateEventFootprint(event, lane);
+      const bounds = activeBounds[lane];
+      const footprint = estimateEventFootprint(event, lane, activeBounds);
       const width = clamp(footprint.width, 90, bounds.width - 12);
       const height = reserveHeight(event, footprint.height);
       const chainId = lane === "derivation" ? event.payload.transformChainId : undefined;
@@ -471,18 +540,18 @@ function planVisuals(
         currentPage = existingChain.page;
       }
       while (!pages[currentPage]) {
-        pages.push(makePageState());
+        pages.push(makePageState(activeBounds));
       }
 
       let laneState = pages[currentPage].lanes[lane];
       const baseY = existingChain?.nextY ?? laneState.y;
       let y = typeof event.payload.y === "number" ? event.payload.y : baseY;
 
-      const overflows = y + height > laneBottom(lane);
+      const overflows = y + height > laneBottom(lane, activeBounds);
       if (overflows && typeof event.payload.y !== "number") {
         currentPage = clamp(currentPage + 1, PAGE_MIN, pageCeiling);
         while (!pages[currentPage]) {
-          pages.push(makePageState());
+          pages.push(makePageState(activeBounds));
         }
         laneState = pages[currentPage].lanes[lane];
         y = laneState.y;
@@ -491,7 +560,7 @@ function planVisuals(
 
       const x = existingChain && typeof event.payload.x !== "number"
         ? existingChain.x
-        : laneX(lane, event, width);
+        : laneX(lane, event, width, activeBounds);
       const slotIndex = typeof existingChain?.nextSlotIndex === "number"
         ? Math.max(laneState.slotIndex, existingChain.nextSlotIndex)
         : laneState.slotIndex;

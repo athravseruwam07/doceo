@@ -25,6 +25,24 @@ function weightedRevealProgress(
   const chars = [...latex];
   if (chars.length === 0) return 1;
 
+  const checkpoints = chars
+    .map((char, idx) => (char === "=" || char === "+" || char === "-" ? (idx + 1) / chars.length : null))
+    .filter((value): value is number => value !== null)
+    .slice(0, 6);
+
+  let pacedProgress = progress;
+  for (const checkpoint of checkpoints) {
+    const window = 0.07;
+    const start = checkpoint - window;
+    const end = checkpoint + window;
+    if (progress > start && progress < end) {
+      const local = (progress - start) / (end - start);
+      const hold = Math.sin(local * Math.PI) * 0.045;
+      pacedProgress -= hold;
+    }
+  }
+  pacedProgress = Math.max(0, Math.min(1, pacedProgress));
+
   const phaseScale = teachingPhase === "result"
     ? 0.92
     : teachingPhase === "checkpoint"
@@ -32,7 +50,7 @@ function weightedRevealProgress(
       : teachingPhase === "derive"
         ? 0.95
         : 1;
-  const eased = easeInOutCubic(Math.min(1, progress / phaseScale));
+  const eased = easeInOutCubic(Math.min(1, pacedProgress / phaseScale));
 
   const weights = chars.map((char) => {
     if (char === "=") return 2.3;

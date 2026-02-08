@@ -25,10 +25,13 @@ export interface SessionResponse {
   session_id: string;
   title: string;
   subject: string;
+  problem_text?: string;
   step_count: number;
   status: string;
   voice_status?: VoiceStatus;
   build_stage?: BuildStage;
+  audio_status?: string;
+  steps?: LessonStep[];
 }
 
 export interface ChatMessage {
@@ -123,6 +126,10 @@ export interface AnimationEvent {
     temporary?: boolean;
     focusTarget?: string;
     teachingPhase?: "setup" | "derive" | "checkpoint" | "result";
+    sceneTemplate?: "given_intro" | "derive_chain" | "scratch_note" | "final_result";
+    sceneId?: string;
+    slotRole?: "heading" | "equation" | "explanation" | "result";
+    syncHoldMs?: number;
     boardPage?: number;
     lane?: BoardLane;
     slotIndex?: number;
@@ -177,6 +184,7 @@ export interface TimelineSegment {
   visuals: AnimationEvent[];
   visualDuration: number;
   duration: number;
+  syncHoldMs?: number;
   stepNumber: number;
   stepTitle?: string;
   isStepStart: boolean;

@@ -20,6 +20,13 @@ export const ANCHOR_BOUNDS: Record<BoardAnchor, AnchorBounds> = {
   final: { x: 52, y: 724, width: 1504, height: 130 },
 };
 
+export const ANCHOR_BOUNDS_EXPANDED: Record<BoardAnchor, AnchorBounds> = {
+  given: { x: 52, y: 46, width: 1504, height: 190 },
+  work: { x: 52, y: 252, width: 1504, height: 448 },
+  scratch: { x: 1036, y: 60, width: 520, height: 646 },
+  final: { x: 52, y: 724, width: 1504, height: 130 },
+};
+
 const ANCHOR_X_LANES: Record<BoardAnchor, number> = {
   given: 74,
   work: 88,
@@ -46,6 +53,23 @@ export const ANCHOR_LABELS: Record<BoardAnchor, AnchorLabelMeta> = {
   scratch: { x: 1048, y: 54, text: "Scratch" },
   final: { x: 64, y: 718, text: "Final" },
 };
+
+export const ANCHOR_LABELS_EXPANDED: Record<BoardAnchor, AnchorLabelMeta> = {
+  given: { x: 64, y: 40, text: "Given" },
+  work: { x: 64, y: 246, text: "Work" },
+  scratch: { x: 1048, y: 54, text: "Scratch" },
+  final: { x: 64, y: 718, text: "Final" },
+};
+
+export function getEffectiveBounds(scratchUsed: boolean): {
+  bounds: Record<BoardAnchor, AnchorBounds>;
+  labels: Record<BoardAnchor, AnchorLabelMeta>;
+} {
+  return {
+    bounds: scratchUsed ? ANCHOR_BOUNDS : ANCHOR_BOUNDS_EXPANDED,
+    labels: scratchUsed ? ANCHOR_LABELS : ANCHOR_LABELS_EXPANDED,
+  };
+}
 
 export interface BoardObject {
   id: string;
@@ -463,8 +487,9 @@ function buildObject(
   const lane = event.payload.lane ?? anchorToLane(eventAnchor(event));
   const anchor = laneToAnchor(lane);
   const zone = event.payload.zone ?? anchorToZone(anchor);
+  const layoutLocked = event.payload.layoutLocked === true;
   const hasLockedGeometry =
-    event.payload.layoutLocked === true &&
+    layoutLocked &&
     typeof event.payload.x === "number" &&
     typeof event.payload.y === "number" &&
     typeof event.payload.width === "number" &&
@@ -473,11 +498,11 @@ function buildObject(
     ? { width: event.payload.width as number, height: event.payload.height as number }
     : estimateSize(event);
 
-  if (!hasLockedGeometry && typeof event.payload.y !== "number" && page > 0) {
+  if (!layoutLocked && typeof event.payload.y !== "number" && page > 0) {
     cursors[anchor] = recomputeCursor(objects, anchor, page);
   }
 
-  if (!hasLockedGeometry && typeof event.payload.y !== "number") {
+  if (!layoutLocked && typeof event.payload.y !== "number") {
     pruneIfNoRoom(objects, annotations, objectMap, cursors, anchor, size.height, page);
   }
 
@@ -486,6 +511,12 @@ function buildObject(
   if (hasLockedGeometry) {
     x = event.payload.x as number;
     y = event.payload.y as number;
+  } else if (layoutLocked) {
+    x = typeof event.payload.x === "number" ? event.payload.x : alignX(event, anchor, size.width);
+    y = typeof event.payload.y === "number" ? event.payload.y : alignY(event, anchor, cursors);
+    const clamped = clampToAnchor(anchor, x, y, size.width, size.height);
+    x = clamped.x;
+    y = clamped.y;
   } else {
     x = alignX(event, anchor, size.width);
     y = alignY(event, anchor, cursors);
