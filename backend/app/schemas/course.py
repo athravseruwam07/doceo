@@ -32,5 +32,6 @@ class CourseLessonResponse(BaseModel):
     subject: str
     status: str
     step_count: int
+    lesson_type: str = "full"
     created_at: str
     problem_preview: str = ""

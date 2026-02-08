@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ChatMessage as ChatMessageType } from "@/lib/types";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
@@ -28,6 +28,34 @@ export default function ChatSidebar({
   voiceEnabled = true,
 }: ChatSidebarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const latestAdaptiveMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role !== "tutor") continue;
+      if (msg.adaptation_mode || msg.confusion_level) {
+        return msg;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const toTitle = (value: string) =>
+    value
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+      .join(" ");
+
+  const adaptiveModeLabel = latestAdaptiveMessage?.adaptation_mode
+    ? toTitle(latestAdaptiveMessage.adaptation_mode.replace(/_/g, " "))
+    : "Standard";
+  const confusionLevel = latestAdaptiveMessage?.confusion_level ?? "low";
+  const adaptiveToneClass =
+    confusionLevel === "high"
+      ? "text-[var(--warning)]"
+      : confusionLevel === "medium"
+        ? "text-[var(--emerald)]"
+        : "text-[var(--ink-tertiary)]";
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -85,6 +113,14 @@ export default function ChatSidebar({
         </span>
         <span className="text-[11px] text-[var(--ink-tertiary)] font-[family-name:var(--font-body)]">
           Voice {voiceEnabled ? "on" : "off"}
+        </span>
+      </div>
+      <div className="px-4 py-2 border-b border-[var(--border)] bg-[var(--paper)] flex items-center justify-between">
+        <span className={`text-[11px] font-[family-name:var(--font-body)] ${adaptiveToneClass}`}>
+          Adaptive mode: {adaptiveModeLabel}
+        </span>
+        <span className="text-[11px] text-[var(--ink-faint)] font-[family-name:var(--font-body)]">
+          Confusion: {toTitle(confusionLevel)}
         </span>
       </div>
 

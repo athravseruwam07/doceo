@@ -51,6 +51,12 @@ export default function ChatMessage({ message }: ChatMessageProps) {
           </span>
         )}
 
+        {!isUser && message.adaptation_reason && (
+          <p className="mt-2 text-[11px] text-[var(--ink-faint)] italic">
+            {message.adaptation_reason}
+          </p>
+        )}
+
         {timestamp && (
           <p
             className={`mt-1 text-[10px] ${

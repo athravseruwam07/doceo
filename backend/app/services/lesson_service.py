@@ -114,6 +114,7 @@ async def create_lesson(session_id: str) -> None:
     session = get_session(session_id)
     if session is None:
         return
+    include_voice = bool(session.get("include_voice", True))
 
     # Reuse existing steps if the session creation endpoint already generated them
     existing_steps = session.get("steps", [])
@@ -132,7 +133,10 @@ async def create_lesson(session_id: str) -> None:
         )
 
     all_steps = result.get("steps", [])
-    steps_with_audio = await _enrich_steps_with_audio(all_steps)
+    if include_voice:
+        steps_with_audio = await _enrich_steps_with_audio(all_steps)
+    else:
+        steps_with_audio = all_steps
 
     update_session(
         session_id,
@@ -151,10 +155,16 @@ async def stream_lesson_steps(session_id: str) -> AsyncGenerator[dict, None]:
         return
 
     steps = session.get("steps", [])
+    include_voice = bool(session.get("include_voice", True))
 
-    # Generate audio if steps don't have it yet
-    if not steps or not _steps_have_audio(steps):
-        print(f"[LessonService] Steps need audio generation (have_steps={bool(steps)}, have_audio={_steps_have_audio(steps) if steps else False})")
+    needs_steps = not steps
+    needs_audio = include_voice and steps and not _steps_have_audio(steps)
+    if needs_steps or needs_audio:
+        print(
+            "[LessonService] Preparing lesson steps "
+            f"(have_steps={bool(steps)}, include_voice={include_voice}, "
+            f"have_audio={_steps_have_audio(steps) if steps else False})"
+        )
         await create_lesson(session_id)
         session = get_session(session_id)
         if session is None:

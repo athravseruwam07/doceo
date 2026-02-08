@@ -7,6 +7,16 @@ import {
   CourseLesson,
 } from "./types";
 
+type SessionCreatePayload = {
+  problem_text: string;
+  subject_hint?: string;
+  course_id?: string;
+};
+
+type MicroSessionCreatePayload = SessionCreatePayload & {
+  include_voice?: boolean;
+};
+
 const API_ORIGIN =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "";
 const BASE = API_ORIGIN || "/api";
@@ -60,7 +70,7 @@ function normalizeChatMessage(raw: ChatMessage): ChatMessage {
 }
 
 export async function createSession(
-  data: FormData | { problem_text: string; subject_hint?: string; course_id?: string }
+  data: FormData | SessionCreatePayload
 ): Promise<SessionResponse> {
   const isFormData = data instanceof FormData;
   const url = isFormData ? `${BASE}/sessions/upload` : `${BASE}/sessions`;
@@ -75,6 +85,26 @@ export async function createSession(
   });
   if (!res.ok) {
     throw new Error(await getErrorMessage(res, "Session creation failed"));
+  }
+  return res.json();
+}
+
+export async function createMicroSession(
+  data: FormData | MicroSessionCreatePayload
+): Promise<SessionResponse> {
+  const isFormData = data instanceof FormData;
+  const url = isFormData ? `${BASE}/sessions/micro/upload` : `${BASE}/sessions/micro`;
+  const res = await fetch(url, {
+    method: "POST",
+    ...(isFormData
+      ? { body: data }
+      : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        }),
+  });
+  if (!res.ok) {
+    throw new Error(await getErrorMessage(res, "Micro-lesson creation failed"));
   }
   return res.json();
 }

@@ -185,12 +185,53 @@ async def analyze_problem(
         ) from e
 
 
+async def generate_micro_lesson(
+    problem_text: str,
+    image_b64: str | None = None,
+    subject_hint: str | None = None,
+    course_label: str | None = None,
+    course_snippets: list[dict[str, Any]] | None = None,
+) -> dict:
+    """Generate a short micro-lesson (1-3 steps) for quick concept reinforcement."""
+    try:
+        prompt = _build_micro_lesson_prompt(
+            problem_text=problem_text,
+            image_b64=image_b64,
+            subject_hint=subject_hint,
+            course_label=course_label,
+            course_snippets=course_snippets or [],
+        )
+
+        model = genai.GenerativeModel(settings.gemini_model)
+
+        if image_b64:
+            import base64
+            from io import BytesIO
+
+            from PIL import Image
+
+            image_data = base64.b64decode(image_b64)
+            image = Image.open(BytesIO(image_data))
+            response = _generate_content_as_json(model, [prompt, image])
+        else:
+            response = _generate_content_as_json(model, prompt)
+
+        return _parse_micro_lesson_response(_response_to_text(response))
+    except Exception as e:
+        logger.error(f"Error generating micro lesson with Gemini: {e}")
+        raise AIServiceError(
+            f"Gemini micro-lesson request failed: {e}. "
+            "Check GEMINI_API_KEY and model access, then retry."
+        ) from e
+
+
 async def generate_chat_response(
     problem_context: str,
     chat_history: list,
     question: str,
     course_label: str | None = None,
     course_snippets: list[dict[str, Any]] | None = None,
+    adaptation: dict[str, Any] | None = None,
 ) -> dict:
     """Generate a tutor response to a student question.
 
@@ -210,6 +251,7 @@ async def generate_chat_response(
             question=question,
             course_label=course_label,
             course_snippets=course_snippets or [],
+            adaptation=adaptation,
         )
 
         # Call Gemini API
@@ -304,12 +346,70 @@ Ensure:
 {course_context}"""
 
 
+def _build_micro_lesson_prompt(
+    problem_text: str,
+    image_b64: str | None,
+    subject_hint: str | None,
+    course_label: str | None,
+    course_snippets: list[dict[str, Any]],
+) -> str:
+    """Build prompt for short micro-lesson generation."""
+    course_context = _format_course_context(course_label, course_snippets)
+    subject_line = subject_hint.strip() if subject_hint else "None provided"
+
+    return f"""You are an expert STEM tutor creating an instant micro-lesson.
+
+Task:
+- Build a concise and focused lesson for this student request.
+- Prioritize conceptual clarity over breadth.
+- Keep it short enough for quick revision.
+
+Problem or concept request: {problem_text}
+Subject hint: {subject_line}
+
+Return valid JSON (no markdown, no code blocks) with this exact structure:
+{{
+  "title": "Clear micro-lesson title",
+  "subject": "Subject area",
+  "introduction": "1-2 sentence setup",
+  "steps": [
+    {{
+      "step_number": 1,
+      "title": "Short step title",
+      "content": "Focused explanation for this step with optional LaTeX like $x^2$",
+      "key_insight": "Single key takeaway",
+      "narration": "Natural spoken version of this step",
+      "math_blocks": [
+        {{
+          "latex": "x^2 + 3x + 2 = 0",
+          "display": true,
+          "annotation": "What this expression represents"
+        }}
+      ]
+    }}
+  ],
+  "summary": "Short recap",
+  "quick_check": "One short concept-check question"
+}}
+
+Requirements:
+- Generate 1 to 3 steps only.
+- Keep each step concise and high-signal.
+- Include at least one worked expression or equation when relevant.
+- Use double backslashes in LaTeX (\\\\).
+- If course context is provided, align notation, wording, and sequencing with those notes.
+- If notes are missing coverage, provide a standard fallback explanation and keep it brief.
+
+{course_context}"""
+
+
 def _build_chat_prompt(
     problem_context: str,
     chat_history: list,
     question: str,
     course_label: str | None,
     course_snippets: list[dict[str, Any]],
+    adaptation: dict[str, Any] | None = None,
 ) -> str:
     """Build prompt for chat response."""
     history_text = ""
@@ -322,6 +422,7 @@ def _build_chat_prompt(
         if course_label
         else "No uploaded course notes were provided."
     )
+    adaptation_context = _format_adaptation_context(adaptation)
 
     return f"""You are a helpful math and science tutor. Answer the student's question in a clear, patient way.
 
@@ -355,7 +456,51 @@ Guidelines:
 - If course notes context is provided, match that language and sequencing.
 - If notes do not cover part of the answer, state that and provide a standard fallback explanation.
 
+{adaptation_context}
 {course_context}"""
+
+
+def _format_adaptation_context(adaptation: dict[str, Any] | None) -> str:
+    if not isinstance(adaptation, dict):
+        return ""
+
+    level = str(adaptation.get("level", "low")).strip().lower()
+    mode = str(adaptation.get("mode", "standard")).strip().lower()
+    reason = str(adaptation.get("reason", "")).strip()
+    signals = adaptation.get("signals", [])
+    signal_text = ", ".join(signal for signal in signals if isinstance(signal, str))[:180]
+
+    pacing = adaptation.get("recommended_pacing", "normal")
+    depth = adaptation.get("recommended_depth", "standard")
+
+    if level == "high":
+        style_rules = (
+            "- Slow pacing significantly and explain one micro-step at a time.\n"
+            "- Begin with a quick prerequisite refresher before solving.\n"
+            "- Include one analogy and one short concept check question."
+        )
+    elif level == "medium":
+        style_rules = (
+            "- Use moderate pacing with clear scaffolding.\n"
+            "- Break each idea into smaller parts and confirm transitions.\n"
+            "- Add one worked mini-example before moving on."
+        )
+    else:
+        style_rules = (
+            "- Keep normal pacing and concise explanations.\n"
+            "- Only add extra scaffolding if the student asks for it."
+        )
+
+    return (
+        "\nAdaptive tutoring policy (must follow):\n"
+        f"- Confusion level: {level}\n"
+        f"- Adaptation mode: {mode}\n"
+        f"- Recommended pacing: {pacing}\n"
+        f"- Recommended depth: {depth}\n"
+        f"- Detection reason: {reason or 'n/a'}\n"
+        f"- Signals: {signal_text or 'none'}\n"
+        f"{style_rules}\n"
+    )
 
 
 def _parse_lesson_response(response_text: str) -> dict:
@@ -403,6 +548,40 @@ def _parse_lesson_response(response_text: str) -> dict:
     except Exception as e:
         logger.error(f"Unexpected error parsing lesson response: {e}")
         raise AIServiceError("Failed to parse Gemini lesson response.") from e
+
+
+def _parse_micro_lesson_response(response_text: str) -> dict:
+    data = _parse_lesson_response(response_text)
+    raw_steps = data.get("steps", [])
+    if not isinstance(raw_steps, list) or not raw_steps:
+        raise AIServiceError("Gemini returned an invalid micro-lesson response.")
+
+    compact_steps: list[dict[str, Any]] = []
+    for index, step in enumerate(raw_steps[:3], start=1):
+        if not isinstance(step, dict):
+            continue
+        compact_step = dict(step)
+        compact_step["step_number"] = index
+        compact_step["title"] = (
+            str(compact_step.get("title", f"Step {index}")).strip() or f"Step {index}"
+        )
+        compact_step["content"] = str(compact_step.get("content", "")).strip()
+        compact_step["narration"] = (
+            str(compact_step.get("narration", "")).strip()
+            or compact_step["content"]
+            or compact_step["title"]
+        )
+        if not isinstance(compact_step.get("math_blocks"), list):
+            compact_step["math_blocks"] = []
+        compact_steps.append(compact_step)
+
+    if not compact_steps:
+        raise AIServiceError("Gemini returned empty micro-lesson steps.")
+
+    data["steps"] = compact_steps
+    if "summary" not in data or not str(data.get("summary", "")).strip():
+        data["summary"] = "Quick recap complete. Ask a follow-up to go deeper."
+    return data
 
 
 def _parse_chat_response(response_text: str) -> dict:

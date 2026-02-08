@@ -5,6 +5,7 @@ from typing import Any
 from app.models.session import get_session, update_session
 from app.models.course import get_course, search_course_snippets
 from app.services.ai_service import generate_chat_response
+from app.services.confusion_service import analyze_confusion
 from app.services.voice_service import get_voice_service
 
 
@@ -180,8 +181,17 @@ async def handle_message(
             )
             course_snippets = search_course_snippets(course_id, snippet_query, top_k=4)
 
-    # Store user message
     chat_log = session.get("chat_log", [])
+    confusion_result = analyze_confusion(
+        message=message,
+        chat_log=chat_log,
+        previous_state=session.get("confusion_state"),
+        context=context,
+    )
+    confusion_state = confusion_result["state"]
+    adaptation = confusion_result["adaptation"]
+
+    # Store user message
     chat_log.append({"role": "student", "message": message, "context": context or {}})
 
     # Generate tutor response with the current lesson state folded into context.
@@ -195,6 +205,7 @@ async def handle_message(
         question=message,
         course_label=course_label,
         course_snippets=course_snippets,
+        adaptation=adaptation,
     )
 
     response["role"] = "tutor"
@@ -220,9 +231,14 @@ async def handle_message(
         step_title = context["current_step_title"]
 
     response["events"] = _build_chat_events(response, step_title)
+    response["confusion_score"] = adaptation.get("score")
+    response["confusion_level"] = adaptation.get("level")
+    response["adaptation_mode"] = adaptation.get("mode")
+    response["adaptation_reason"] = adaptation.get("reason")
+    response["confusion_signals"] = adaptation.get("signals", [])
 
     # Store tutor response
     chat_log.append(response)
-    update_session(session_id, chat_log=chat_log)
+    update_session(session_id, chat_log=chat_log, confusion_state=confusion_state)
 
     return response

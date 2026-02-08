@@ -54,3 +54,8 @@ class ChatResponse(BaseModel):
     audio_url: Optional[str] = None
     audio_duration: Optional[float] = None
     events: list[ChatEvent] = Field(default_factory=list)
+    confusion_score: Optional[float] = None
+    confusion_level: Optional[Literal["low", "medium", "high"]] = None
+    adaptation_mode: Optional[str] = None
+    adaptation_reason: Optional[str] = None
+    confusion_signals: list[str] = Field(default_factory=list)

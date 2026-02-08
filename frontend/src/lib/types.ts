@@ -30,6 +30,11 @@ export interface SessionResponse {
   created_at?: string;
   course_id?: string;
   course_label?: string;
+  confusion_score?: number;
+  confusion_level?: "low" | "medium" | "high";
+  adaptation_mode?: string;
+  lesson_type?: "full" | "micro";
+  include_voice?: boolean;
 }
 
 export interface CourseSummary {
@@ -55,6 +60,7 @@ export interface CourseLesson {
   subject: string;
   status: string;
   step_count: number;
+  lesson_type?: "full" | "micro";
   created_at: string;
   problem_preview: string;
 }
@@ -69,6 +75,11 @@ export interface ChatMessage {
   audio_duration?: number;
   events?: AnimationEvent[];
   created_at?: string;
+  confusion_score?: number;
+  confusion_level?: "low" | "medium" | "high";
+  adaptation_mode?: string;
+  adaptation_reason?: string;
+  confusion_signals?: string[];
 }
 
 export interface ChatContextPayload {

@@ -21,6 +21,7 @@ import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 
 type InputMode = "upload" | "type";
+type LessonFormat = "full" | "micro";
 
 const SUBJECT_HINTS = [
   "General STEM",
@@ -132,6 +133,8 @@ export default function Home() {
   const [lessonsLoading, setLessonsLoading] = useState(false);
   const [notesUploading, setNotesUploading] = useState(false);
   const [courseError, setCourseError] = useState<string | null>(null);
+  const [lessonFormat, setLessonFormat] = useState<LessonFormat>("full");
+  const [microVoiceEnabled, setMicroVoiceEnabled] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -312,7 +315,11 @@ export default function Home() {
   };
 
   const handleSubmit = async () => {
-    const sessionId = await submit();
+    const isMicroLesson = lessonFormat === "micro";
+    const sessionId = await submit({
+      microLesson: isMicroLesson,
+      includeVoice: isMicroLesson ? microVoiceEnabled : true,
+    });
     if (!sessionId) return;
     if (text.trim()) {
       saveRecentProblem(text.trim());
@@ -560,6 +567,7 @@ export default function Home() {
                         {lesson.title}
                       </p>
                       <p className="text-[11px] text-[var(--ink-faint)]">
+                        {lesson.lesson_type === "micro" ? "Micro lesson" : "Full lesson"} •{" "}
                         {lesson.subject} • {lesson.step_count} steps •{" "}
                         {formatLessonDate(lesson.created_at)}
                       </p>
@@ -582,6 +590,48 @@ export default function Home() {
 
             {courseError && (
               <p className="mt-3 text-[12px] text-[var(--error)]">{courseError}</p>
+            )}
+          </div>
+
+          <div className="mb-5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--paper)] px-3 py-3">
+            <p className="text-[12px] font-semibold text-[var(--ink)] uppercase tracking-wide mb-2">
+              Lesson Format
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { id: "full", label: "Full Lesson", hint: "Complete breakdown" },
+                  {
+                    id: "micro",
+                    label: "Micro Lesson",
+                    hint: "Quick revision in 1-3 steps",
+                  },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.id}
+                  onClick={() => setLessonFormat(option.id)}
+                  className={`rounded-[var(--radius-sm)] border px-3 py-1.5 text-[12px] transition-colors cursor-pointer ${
+                    lessonFormat === option.id
+                      ? "border-[var(--emerald)] bg-[var(--emerald-subtle)] text-[var(--emerald)]"
+                      : "border-[var(--border)] bg-[var(--paper-warm)] text-[var(--ink-secondary)] hover:bg-[var(--cream-dark)]"
+                  }`}
+                  title={option.hint}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {lessonFormat === "micro" && (
+              <label className="mt-3 inline-flex items-center gap-2 text-[12px] text-[var(--ink-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={microVoiceEnabled}
+                  onChange={(e) => setMicroVoiceEnabled(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-[var(--emerald)]"
+                />
+                Include voice narration
+              </label>
             )}
           </div>
 
@@ -647,10 +697,14 @@ export default function Home() {
               {loading ? (
                 <>
                   <Spinner size={16} />
-                  <span>Analyzing...</span>
+                  <span>
+                    {lessonFormat === "micro"
+                      ? "Generating micro-lesson..."
+                      : "Analyzing..."}
+                  </span>
                 </>
               ) : (
-                "Start lesson"
+                lessonFormat === "micro" ? "Generate micro-lesson" : "Start lesson"
               )}
             </Button>
           </div>
