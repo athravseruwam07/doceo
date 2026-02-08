@@ -17,9 +17,18 @@
 
   /* Emerald accent — deep, scholarly */
   --emerald: #1B6B52;
+  --emerald-dark: #145943;
   --emerald-light: #2A8A6A;
   --emerald-subtle: #E8F4EF;
   --emerald-wash: #F2FAF6;
+
+  /* Whiteboard v2 tokens (light) */
+  --board-page-bg: #e6eef5;
+  --board-bg: #f8fcff;
+  --board-ink: #18384d;
+  --board-muted: rgba(28, 58, 81, 0.64);
+  --board-focus: #2d8ce7;
+  --board-highlight: rgba(255, 224, 100, 0.34);
 
   /* Functional */
   --border: #E2E0D8;
@@ -61,9 +70,18 @@
 
   /* Emerald accent — lighter for contrast on dark bg */
   --emerald: #3FA876;
+  --emerald-dark: #2D8A60;
   --emerald-light: #50BA8F;
   --emerald-subtle: #1D5539;
   --emerald-wash: #152A21;
+
+  /* Whiteboard v2 tokens (dark) */
+  --board-page-bg: #0d1620;
+  --board-bg: #172431;
+  --board-ink: #eaf4fc;
+  --board-muted: rgba(208, 227, 241, 0.66);
+  --board-focus: #7cc0ff;
+  --board-highlight: rgba(255, 220, 92, 0.26);
 
   /* Functional */
   --border: #2A2A2A;
@@ -165,16 +183,27 @@ body {
 
 /* ─── KaTeX overrides ─── */
 .katex-display {
-  margin: 1em 0 !important;
-  padding: 0.75em 1em;
-  background: var(--paper);
-  border-left: 2px solid var(--emerald);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 0.4em 0 !important;
+  padding: 0;
+  background: transparent;
+  border-left: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .katex {
-  font-size: 1.05em !important;
+  font-size: 1.3em !important;
   color: var(--ink);
+}
+
+/* Board KaTeX — larger, more prominent */
+.board-equation .katex {
+  font-size: 1.5em !important;
+}
+
+.board-equation .katex-display {
+  margin: 0 !important;
+  padding: 0;
 }
 
 /* ─── Step reveal animation ─── */
@@ -210,6 +239,268 @@ body {
 /* ─── Whiteboard Player ─── */
 .whiteboard-canvas {
   box-shadow: var(--shadow-lg);
+}
+
+/* ─── Board: The Video-Like Whiteboard Surface ─── */
+
+/* Container — the full board region, dark green-slate surface */
+.board-container {
+  background: #1C2B2D;
+  position: relative;
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.25);
+}
+
+/* Subtle chalk-dust grain overlay */
+.board-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+}
+
+.board-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Dark theme board variant (already dark, so same) */
+[data-theme="dark"] .board-container {
+  background: #141F21;
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.4);
+}
+
+/* Step indicator — floating pill at top-left */
+.board-step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  animation: step-indicator-appear 0.4s ease-out;
+}
+
+.board-step-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  background: rgba(63, 168, 118, 0.2);
+  border: 1px solid rgba(63, 168, 118, 0.35);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7DDBA8;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+.board-step-title {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-weight: 400;
+}
+
+@keyframes step-indicator-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The scrollable surface */
+.board-surface {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.board-surface::-webkit-scrollbar {
+  width: 4px;
+}
+
+.board-surface::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.board-surface::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+/* Content area — centered, generous padding */
+.board-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 2rem 3rem;
+  gap: 1.2rem;
+}
+
+/* Step groups — clusters of related visuals */
+.board-step-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: 700px;
+  animation: board-group-appear 0.3s ease-out;
+}
+
+@keyframes board-group-appear {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Divider between steps — thin chalk line */
+.board-divider {
+  width: 120px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0.8rem auto;
+  border-radius: 1px;
+}
+
+/* Equation items — prominent, centered, the star of the show */
+.board-equation {
+  width: 100%;
+  max-width: 650px;
+  text-align: center;
+  padding: 0.6rem 1.5rem;
+  border-radius: 8px;
+  animation: equation-appear 0.25s ease-out;
+}
+
+.board-equation .katex {
+  color: #F0F0F0 !important;
+  font-size: 1.5em !important;
+}
+
+.board-equation .katex-display {
+  background: transparent !important;
+  border-left: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+@keyframes equation-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Label items — small, supporting text (chalk-style) */
+.board-label {
+  width: 100%;
+  max-width: 650px;
+  text-align: center;
+  padding: 0.2rem 1rem;
+  animation: label-appear 0.2s ease-out;
+}
+
+@keyframes label-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Chalk text — handwriting-like feel */
+.chalk-text {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 14px;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  line-height: 1.5;
+}
+
+/* Inline math inside labels — slightly brighter */
+.chalk-text .katex {
+  color: rgba(255, 255, 255, 0.8) !important;
+  font-size: 1em !important;
+}
+
+/* Active item — currently being drawn */
+.board-active-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Active equation glow effect */
+.board-active-item .board-equation {
+  position: relative;
+}
+
+.board-active-item .board-equation::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 12px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(63, 168, 118, 0.08) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Equation reveal cursor — positioned on the board */
+.board-equation .equation-cursor {
+  background: #7DDBA8;
+}
+
+/* Board annotation overrides — brighter for dark board */
+.board-container .annotation-highlight {
+  background: linear-gradient(to bottom, transparent 60%, rgba(63, 168, 118, 0.2) 60%);
+}
+
+.board-container .annotation-underline {
+  text-decoration-color: #7DDBA8;
+}
+
+.board-container .annotation-box {
+  outline-color: #7DDBA8;
+}
+
+.board-container .annotation-circle {
+  outline-color: #7DDBA8;
 }
 
 /* Equation reveal cursor */
@@ -259,15 +550,15 @@ body {
   }
 }
 
-/* Narration bar */
-.narration-bar p {
-  animation: narration-fade 0.4s ease-out;
+/* ─── Step Headers ─── */
+.step-header {
+  animation: step-header-appear 0.3s ease-out;
 }
 
-@keyframes narration-fade {
+@keyframes step-header-appear {
   from {
     opacity: 0;
-    transform: translateX(-8px);
+    transform: translateX(-12px);
   }
   to {
     opacity: 1;
@@ -275,38 +566,382 @@ body {
   }
 }
 
+.step-badge {
+  animation: badge-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes badge-pop {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ─── Board Step Sections ─── */
+.board-step-section {
+  animation: section-appear 0.3s ease-out;
+}
+
+@keyframes section-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.board-step-section + .board-step-section {
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Annotation Styles ─── */
+.annotation-highlight {
+  background: linear-gradient(to bottom, transparent 60%, rgba(27, 107, 82, 0.15) 60%);
+  transition: background 0.3s ease-out;
+}
+
+.annotation-underline {
+  text-decoration: underline;
+  text-decoration-color: var(--emerald);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.3s ease-out;
+}
+
+.annotation-box {
+  outline: 2px solid var(--emerald);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+  transition: outline-color 0.3s ease-out;
+}
+
+.annotation-circle {
+  outline: 2px solid var(--emerald);
+  outline-offset: 6px;
+  border-radius: 50%;
+  transition: outline-color 0.3s ease-out;
+}
+
+/* ─── Last Char Indicator (replaces blinking cursor) ─── */
+.last-char-indicator {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--emerald);
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  opacity: 0.6;
+  animation: char-fade 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes char-fade {
+  from { opacity: 0.3; }
+  to { opacity: 0.8; }
+}
+
 /* Player controls */
 .player-controls {
   box-shadow: 0 -1px 4px rgba(26, 26, 26, 0.04);
 }
 
-/* Whiteboard grid lines for teaching canvas/side work */
-.whiteboard-grid {
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--border) 65%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--border) 65%, transparent) 1px, transparent 1px);
-  background-size: 22px 22px;
+/* ─── Whiteboard V2 (polished board + interactive overlays) ─── */
+.board-v2-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background:
+    radial-gradient(circle at 10% 8%, rgba(90, 138, 167, 0.16), transparent 42%),
+    radial-gradient(circle at 88% 82%, rgba(102, 152, 184, 0.13), transparent 48%),
+    linear-gradient(160deg, var(--board-page-bg) 0%, color-mix(in srgb, var(--board-page-bg) 92%, #000 8%) 100%);
 }
 
-[data-theme="dark"] .whiteboard-grid {
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--border) 82%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--border) 82%, transparent) 1px, transparent 1px);
+.board-v2-shell.is-light {
+  background:
+    radial-gradient(circle at 10% 8%, rgba(88, 136, 167, 0.2), transparent 38%),
+    radial-gradient(circle at 88% 82%, rgba(99, 150, 184, 0.16), transparent 44%),
+    linear-gradient(160deg, var(--board-page-bg) 0%, #dce8f2 48%, #d4e2ed 100%);
 }
 
-/* Chat message entry */
-.chat-bubble {
-  animation: chat-bubble-in 180ms var(--ease-out);
+.board-v2-shell.is-dark {
+  background:
+    radial-gradient(circle at 10% 8%, rgba(78, 122, 154, 0.15), transparent 40%),
+    radial-gradient(circle at 88% 82%, rgba(58, 98, 129, 0.18), transparent 46%),
+    linear-gradient(160deg, var(--board-page-bg) 0%, #121d27 48%, #0c141b 100%);
 }
 
-@keyframes chat-bubble-in {
-  from {
+.board-v2-step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 8px 16px;
+}
+
+.board-v2-step-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.35px;
+  font-weight: 600;
+  border: 1px solid rgba(27, 107, 82, 0.24);
+}
+
+.board-v2-shell.is-light .board-v2-step-pill {
+  background: color-mix(in srgb, var(--board-focus) 12%, transparent);
+  color: color-mix(in srgb, var(--board-focus) 65%, #0d2c44 35%);
+}
+
+.board-v2-shell.is-dark .board-v2-step-pill {
+  background: color-mix(in srgb, var(--board-focus) 16%, transparent);
+  border-color: color-mix(in srgb, var(--board-focus) 40%, transparent);
+  color: color-mix(in srgb, var(--board-focus) 82%, white 18%);
+}
+
+.board-v2-step-title {
+  font-size: 13px;
+}
+
+.board-v2-page-indicator {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.22px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 4px 9px;
+}
+
+.board-v2-shell.is-light .board-v2-step-title {
+  color: color-mix(in srgb, var(--board-ink) 65%, transparent);
+}
+
+.board-v2-shell.is-dark .board-v2-step-title {
+  color: color-mix(in srgb, var(--board-ink) 72%, transparent);
+}
+
+.board-v2-shell.is-light .board-v2-page-indicator {
+  color: color-mix(in srgb, var(--board-ink) 62%, transparent);
+  background: color-mix(in srgb, var(--board-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--board-ink) 12%, transparent);
+}
+
+.board-v2-shell.is-dark .board-v2-page-indicator {
+  color: color-mix(in srgb, var(--board-ink) 76%, transparent);
+  background: color-mix(in srgb, var(--board-ink) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--board-ink) 16%, transparent);
+}
+
+.board-v2-stage-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.board-v2-html-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.board-v2-item {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+
+.board-v2-item .equation-reveal {
+  margin: 0;
+}
+
+.board-v2-shell.is-light .board-v2-item .katex {
+  color: var(--board-ink) !important;
+}
+
+.board-v2-shell.is-dark .board-v2-item .katex {
+  color: var(--board-ink) !important;
+}
+
+.board-v2-shell.is-light .board-v2-item .typewriter-line {
+  color: color-mix(in srgb, var(--board-ink) 82%, transparent);
+}
+
+.board-v2-shell.is-dark .board-v2-item .typewriter-line {
+  color: color-mix(in srgb, var(--board-ink) 84%, transparent);
+}
+
+.board-v2-derivation-guide {
+  position: absolute;
+  pointer-events: none;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--board-focus) 0%, transparent),
+    color-mix(in srgb, var(--board-focus) 35%, transparent),
+    color-mix(in srgb, var(--board-focus) 0%, transparent)
+  );
+  z-index: 3;
+}
+
+.board-v2-row-marker {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--board-focus) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--board-focus) 10%, transparent);
+  z-index: 4;
+  transition: left 180ms var(--ease-out), top 180ms var(--ease-out), height 180ms var(--ease-out);
+}
+
+.board-v2-row-marker.is-playing {
+  animation: board-v2-row-pulse 1.25s ease-in-out infinite;
+}
+
+.board-v2-row-marker.is-paused {
+  opacity: 0.55;
+}
+
+.board-v2-active-line {
+  position: absolute;
+  pointer-events: none;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--board-focus) 68%, transparent);
+  z-index: 4;
+  transform-origin: left center;
+  transition: left 180ms var(--ease-out), top 180ms var(--ease-out), width 180ms var(--ease-out);
+}
+
+.board-v2-active-line.is-playing {
+  animation: board-v2-line-breathe 1.3s ease-in-out infinite;
+}
+
+.board-v2-active-line.is-paused {
+  opacity: 0.7;
+}
+
+.board-v2-scratch-tray {
+  position: absolute;
+  right: 12px;
+  bottom: 14px;
+  z-index: 8;
+  width: min(320px, 82vw);
+}
+
+.board-v2-scratch-toggle {
+  width: 100%;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--board-focus) 28%, transparent);
+  background: color-mix(in srgb, var(--board-bg) 92%, transparent);
+  color: color-mix(in srgb, var(--board-ink) 86%, transparent);
+  padding: 7px 12px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.board-v2-scratch-toggle span {
+  border-radius: 999px;
+  min-width: 20px;
+  text-align: center;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--board-focus) 18%, transparent);
+}
+
+.board-v2-scratch-list {
+  margin-top: 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--board-focus) 20%, transparent);
+  background: color-mix(in srgb, var(--board-bg) 95%, transparent);
+  max-height: 36vh;
+  overflow: auto;
+  padding: 10px;
+}
+
+.board-v2-scratch-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--board-focus) 8%, transparent);
+  background: color-mix(in srgb, var(--board-bg) 85%, transparent);
+}
+
+.board-v2-scratch-item + .board-v2-scratch-item {
+  margin-top: 8px;
+}
+
+.board-v2-scratch-empty {
+  color: color-mix(in srgb, var(--board-ink) 58%, transparent);
+  font-size: 12px;
+}
+
+.board-v2-scratch-diagram {
+  margin: 0;
+  color: color-mix(in srgb, var(--board-ink) 68%, transparent);
+  font-size: 12px;
+}
+
+.board-v2-page-turn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  font-size: 13px;
+  letter-spacing: 0.24px;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--board-focus) 42%, transparent);
+  color: color-mix(in srgb, var(--board-focus) 84%, white 16%);
+  background: color-mix(in srgb, var(--board-bg) 70%, transparent);
+  backdrop-filter: blur(2px);
+  animation: board-page-turn-fade 760ms var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+@keyframes board-page-turn-fade {
+  0% {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translate(-50%, -42%);
   }
-  to {
+  20% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, -50%);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -58%);
+  }
+}
+
+@keyframes board-v2-row-pulse {
+  0%, 100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.92;
+  }
+}
+
+@keyframes board-v2-line-breathe {
+  0%, 100% {
+    opacity: 0.52;
+    transform: scaleX(0.98);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scaleX(1);
   }
 }
 

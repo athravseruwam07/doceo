@@ -1,13 +1,74 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { BlockMath, InlineMath } from "react-katex";
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 
 interface AnimatedEquationProps {
   latex: string;
   duration: number;
   isAnimating: boolean;
   display?: boolean;
+  animationProgress?: number;
+  teachingPhase?: "setup" | "derive" | "checkpoint" | "result";
+  eventId?: string;
+}
+
+function weightedRevealProgress(
+  latex: string,
+  progress: number,
+  teachingPhase: AnimatedEquationProps["teachingPhase"]
+): number {
+  const chars = [...latex];
+  if (chars.length === 0) return 1;
+
+  const checkpoints = chars
+    .map((char, idx) => (char === "=" || char === "+" || char === "-" ? (idx + 1) / chars.length : null))
+    .filter((value): value is number => value !== null)
+    .slice(0, 6);
+
+  let pacedProgress = progress;
+  for (const checkpoint of checkpoints) {
+    const window = 0.07;
+    const start = checkpoint - window;
+    const end = checkpoint + window;
+    if (progress > start && progress < end) {
+      const local = (progress - start) / (end - start);
+      const hold = Math.sin(local * Math.PI) * 0.045;
+      pacedProgress -= hold;
+    }
+  }
+  pacedProgress = Math.max(0, Math.min(1, pacedProgress));
+
+  const phaseScale = teachingPhase === "result"
+    ? 0.92
+    : teachingPhase === "checkpoint"
+      ? 0.88
+      : teachingPhase === "derive"
+        ? 0.95
+        : 1;
+  const eased = easeInOutCubic(Math.min(1, pacedProgress / phaseScale));
+
+  const weights = chars.map((char) => {
+    if (char === "=") return 2.3;
+    if (char === "+" || char === "-" || char === "\\") return 1.75;
+    if (char === "(" || char === ")") return 1.5;
+    return 1;
+  });
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+  const target = eased * totalWeight;
+
+  let consumed = 0;
+  let revealed = 0;
+  for (let i = 0; i < weights.length; i += 1) {
+    consumed += weights[i];
+    revealed = i + 1;
+    if (consumed >= target) break;
+  }
+  return Math.min(1, Math.max(0, revealed / chars.length));
 }
 
 export default function AnimatedEquation({
@@ -15,53 +76,66 @@ export default function AnimatedEquation({
   duration,
   isAnimating,
   display = true,
+  animationProgress,
+  teachingPhase,
 }: AnimatedEquationProps) {
-  const [revealPercent, setRevealPercent] = useState(isAnimating ? 0 : 100);
+  const [internalProgress, setInternalProgress] = useState(isAnimating ? 0 : 1);
+  const rafRef = useRef<number>(0);
+  const startRef = useRef(0);
 
   useEffect(() => {
+    if (animationProgress !== undefined) return;
+    let cancelled = false;
+
     if (!isAnimating) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setRevealPercent(100);
-      return;
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (!cancelled) setInternalProgress(1);
+      });
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(rafRef.current);
+      };
     }
 
-    setRevealPercent(0);
-    const interval = 16; // ~60fps
-    const steps = duration / interval;
-    const increment = 100 / steps;
-    let current = 0;
-
-    const timer = setInterval(() => {
-      current += increment;
-      if (current >= 100) {
-        setRevealPercent(100);
-        clearInterval(timer);
-      } else {
-        setRevealPercent(current);
+    startRef.current = performance.now();
+    rafRef.current = requestAnimationFrame(() => {
+      if (!cancelled) setInternalProgress(0);
+    });
+    const tick = () => {
+      const elapsed = performance.now() - startRef.current;
+      const raw = Math.min(1, elapsed / duration);
+      setInternalProgress(raw);
+      if (raw < 1) {
+        rafRef.current = requestAnimationFrame(tick);
       }
-    }, interval);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [isAnimating, duration, animationProgress]);
 
-    return () => clearInterval(timer);
-  }, [isAnimating, duration]);
+  const rawProgress = animationProgress !== undefined ? animationProgress : internalProgress;
+  const revealPercent = weightedRevealProgress(latex, rawProgress, teachingPhase) * 100;
+
+  // Subtle micro-motion during animation
+  const isActive = rawProgress > 0 && rawProgress < 1;
+  const microY = isActive ? Math.sin(rawProgress * Math.PI * 6) * 0.3 : 0;
 
   if (display) {
     return (
-      <div className="equation-reveal my-3">
+      <div className="equation-reveal my-3" data-animating={isActive}>
         <div
           className="relative overflow-hidden"
           style={{
             clipPath: `inset(0 ${100 - revealPercent}% 0 0)`,
+            transform: `translateY(${microY}px)`,
           }}
         >
           <BlockMath math={latex} />
         </div>
-        {/* Cursor indicator */}
-        {isAnimating && revealPercent < 100 && (
-          <div
-            className="equation-cursor"
-            style={{ left: `${revealPercent}%` }}
-          />
-        )}
       </div>
     );
   }
@@ -74,6 +148,7 @@ export default function AnimatedEquation({
           revealPercent < 100
             ? `inset(0 ${100 - revealPercent}% 0 0)`
             : undefined,
+        transform: `translateY(${microY}px)`,
       }}
     >
       <InlineMath math={latex} />

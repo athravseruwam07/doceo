@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useState, useEffect } from "react";
+import React, { createContext, useCallback, useState } from "react";
 import { AudioSyncPlayer } from "@/lib/audioPlayer";
 
 interface VoiceContextType {
@@ -23,22 +23,6 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   });
   const [playbackRate, setPlaybackRate] = useState(1);
   const [audioPlayer] = useState(() => new AudioSyncPlayer());
-
-  // Load preference from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem("doceo-voice-enabled");
-    if (saved !== null) {
-      try {
-        const val = JSON.parse(saved);
-        console.log(`[VoiceContext] Loaded voice preference from localStorage: ${val}`);
-        setEnabled(val);
-      } catch {
-        // ignore invalid JSON — keep default (true)
-      }
-    } else {
-      console.log("[VoiceContext] No saved preference, voice enabled by default");
-    }
-  }, []);
 
   const toggleVoice = useCallback(() => {
     setEnabled((prev) => {

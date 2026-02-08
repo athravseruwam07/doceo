@@ -1,13 +1,22 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
+import { Crimson_Pro, Source_Sans_3 } from "next/font/google";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { VoiceProvider } from "@/contexts/VoiceContext";
 import "./globals.css";
 
-const headingFallback =
-  "'Iowan Old Style','Palatino Linotype',Palatino,'URW Palladio L',serif";
-const bodyFallback =
-  "'Avenir Next','Segoe UI',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif";
+const crimson = Crimson_Pro({
+  variable: "--font-crimson",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
+});
+
+const sourceSans = Source_Sans_3({
+  variable: "--font-source",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["300", "400", "500", "600"],
+});
 
 export const metadata: Metadata = {
   title: "Doceo — Step-by-step STEM tutoring",
@@ -21,14 +30,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <body
-        style={
-          {
-            "--font-crimson": headingFallback,
-            "--font-source": bodyFallback,
-          } as CSSProperties
-        }
+        className={`${crimson.variable} ${sourceSans.variable}`}
+        suppressHydrationWarning
       >
         <ThemeProvider>
           <VoiceProvider>{children}</VoiceProvider>

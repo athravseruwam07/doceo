@@ -1,58 +1,23 @@
-import {
-  SessionResponse,
-  ChatMessage,
-  ChatContextPayload,
-  ExamCramResponse,
-} from "./types";
+import { SessionResponse, ChatContextPayload, ChatMessage } from "./types";
+import { convertBackendEvent } from "./timeline";
 
-const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-const BASE = API_ORIGIN.replace(/\/$/, "");
+const BASE = "/api";
 
-async function parseApiError(res: Response, fallback: string): Promise<Error> {
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
   try {
-    const data = (await res.json()) as { detail?: string };
-    if (data?.detail) return new Error(data.detail);
+    const body = await res.json();
+    if (body?.detail) return typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    if (body?.message) return body.message;
   } catch {
-    // ignore JSON parse failure and try plain text
+    // response wasn't JSON
   }
-  try {
-    const text = await res.text();
-    if (text.trim()) {
-      return new Error(text.trim());
-    }
-  } catch {
-    // ignore text parse failure
-  }
-  return new Error(fallback);
-}
-
-async function parseUnknownApiError(
-  err: unknown,
-  fallback: string
-): Promise<Error> {
-  if (err instanceof Error) return err;
-  if (err instanceof Response) return parseApiError(err, fallback);
-  return new Error(fallback);
+  return fallback;
 }
 
 function normalizeAudioUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith("/audio/")) return `${API_ORIGIN}${url}`;
+  if (url.startsWith("/audio/")) return `${BASE}${url}`;
   return url;
-}
-
-function normalizeChatMessage(raw: ChatMessage): ChatMessage {
-  return {
-    ...raw,
-    audio_url: normalizeAudioUrl(raw.audio_url),
-    events: raw.events?.map((event) => ({
-      ...event,
-      payload: {
-        ...event.payload,
-        audioUrl: normalizeAudioUrl(event.payload.audioUrl),
-      },
-    })),
-  };
 }
 
 export async function createSession(
@@ -60,9 +25,15 @@ export async function createSession(
 ): Promise<SessionResponse> {
   const isFormData = data instanceof FormData;
   const url = isFormData ? `${BASE}/sessions/upload` : `${BASE}/sessions`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+
+  let res: Response;
   try {
-    const res = await fetch(url, {
+    res = await fetch(url, {
       method: "POST",
+      signal: controller.signal,
       ...(isFormData
         ? { body: data }
         : {
@@ -70,16 +41,20 @@ export async function createSession(
             body: JSON.stringify(data),
           }),
     });
-    if (!res.ok) {
-      throw await parseApiError(res, `Session creation failed: ${res.status}`);
-    }
-    return res.json();
   } catch (err) {
-    throw await parseUnknownApiError(
-      err,
-      "Session creation failed: cannot reach backend. Check backend is running on http://127.0.0.1:8000."
-    );
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw new Error("Could not reach the server. Make sure the backend is running.");
+  } finally {
+    clearTimeout(timeout);
   }
+
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Server error (${res.status}). Please try again.`);
+    throw new Error(msg);
+  }
+  return res.json();
 }
 
 export async function sendChatMessage(
@@ -108,14 +83,44 @@ export async function sendChatMessage(
     };
   }
 
-  const res = await fetch(`${BASE}/sessions/${sessionId}/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
-  const data = (await res.json()) as ChatMessage;
-  return normalizeChatMessage(data);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/sessions/${sessionId}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error("Could not reach the server. Please try again.");
+  }
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Chat failed (${res.status})`);
+    throw new Error(msg);
+  }
+  const data = (await res.json()) as ChatMessage & { events?: Record<string, unknown>[] };
+  const normalizedMessage: ChatMessage = {
+    ...data,
+    audio_url: normalizeAudioUrl(data.audio_url),
+  };
+
+  if (!Array.isArray(data.events)) {
+    return normalizedMessage;
+  }
+
+  const rawEvents = data.events.map((event) => ({
+    ...((event as unknown) as Record<string, unknown>),
+    payload: {
+      ...((event as { payload?: Record<string, unknown> }).payload ?? {}),
+      audioUrl: normalizeAudioUrl(
+        ((event as { payload?: { audioUrl?: string } }).payload?.audioUrl)
+      ),
+    },
+  })) as Record<string, unknown>[];
+
+  return {
+    ...normalizedMessage,
+    events: rawEvents.map((evt) => convertBackendEvent(evt)),
+  };
 }
 
 export async function getExport(sessionId: string): Promise<Blob> {
@@ -132,56 +137,25 @@ export function getLessonStreamUrl(sessionId: string): string {
 }
 
 export function getVoiceStreamUrl(sessionId: string): string {
-  const wsBase = API_ORIGIN.replace(/^http/, "ws").replace(/\/$/, "");
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const wsBase = backendUrl.replace(/^http/, "ws").replace(/\/$/, "");
   return `${wsBase}/sessions/${sessionId}/voice/stream`;
 }
 
-export async function createExamCramPlan(
-  sessionId: string,
-  payload: {
-    materials: string[];
-    subject_hint?: string;
-    exam_name?: string;
-  }
-): Promise<ExamCramResponse> {
-  const res = await fetch(`${BASE}/sessions/${sessionId}/exam-cram`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+export async function getSessionInfo(sessionId: string): Promise<SessionResponse> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}`);
   if (!res.ok) {
-    throw await parseApiError(res, `Exam cram generation failed: ${res.status}`);
+    const msg = await extractErrorMessage(res, `Session fetch failed (${res.status})`);
+    throw new Error(msg);
   }
-  return (await res.json()) as ExamCramResponse;
+  return res.json();
 }
 
-export async function createExamCramPlanUpload(
-  sessionId: string,
-  payload: {
-    files: File[];
-    notes?: string;
-    subject_hint?: string;
-    exam_name?: string;
-  }
-): Promise<ExamCramResponse> {
-  const formData = new FormData();
-  for (const file of payload.files) {
-    formData.append("files", file);
-  }
-  if (payload.notes?.trim()) formData.append("notes", payload.notes.trim());
-  if (payload.subject_hint?.trim()) {
-    formData.append("subject_hint", payload.subject_hint.trim());
-  }
-  if (payload.exam_name?.trim()) {
-    formData.append("exam_name", payload.exam_name.trim());
-  }
-
-  const res = await fetch(`${BASE}/sessions/${sessionId}/exam-cram/upload`, {
-    method: "POST",
-    body: formData,
-  });
+export async function getVoiceHealth(): Promise<{ status: string; detail?: string }> {
+  const res = await fetch(`${BASE}/audio/health?force=true`, { cache: "no-store" });
   if (!res.ok) {
-    throw await parseApiError(res, `Exam cram upload failed: ${res.status}`);
+    const msg = await extractErrorMessage(res, `Voice health failed (${res.status})`);
+    throw new Error(msg);
   }
-  return (await res.json()) as ExamCramResponse;
+  return res.json();
 }
