@@ -4,13 +4,26 @@ Interactive AI tutor that teaches STEM problems step-by-step on an animated whit
 
 ## Features
 
-✨ **Real-time AI Lesson Generation**: Uses Google Gemini API to analyze any math/science problem and create custom step-by-step lessons
-🎙️ **Voice Narration**: Gemini text-to-speech synced with whiteboard animations
-🖊️ **Interactive Whiteboard**: Animated equations and annotations reveal naturally
-💬 **Ask Questions Mid-Lesson**: Interrupt the tutor, ask clarifying questions, and get instant contextual answers
-🌓 **Light/Dark Theme**: Beautiful theme system with dark mode support
-📱 **Responsive Design**: Works on desktop, tablet, and mobile
-⚡ **Fast Generation**: Lessons generated in 10-30 seconds
+✨ **Real-time AI Lesson Generation**  
+Uses Google Gemini API to analyze any math or science problem and generate custom step-by-step lessons.
+
+🎙 **Voice Narration**  
+Gemini text-to-speech synced precisely with whiteboard animations.
+
+✏️ **Interactive Whiteboard**  
+Equations, diagrams, and annotations animate naturally as if written by a real teacher.
+
+💬 **Ask Questions Mid-Lesson**  
+Interrupt the tutor at any time to ask clarifying questions and receive instant, contextual explanations.
+
+🌗 **Light / Dark Theme**  
+Beautiful theme system with full dark-mode support.
+
+📱 **Responsive Design**  
+Works seamlessly on desktop, tablet, and mobile devices.
+
+⚡ **Fast Generation**  
+Lessons are generated in approximately 10–30 seconds.
 
 ## Setup
 
