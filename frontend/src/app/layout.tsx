@@ -21,7 +21,7 @@ const sourceSans = Source_Sans_3({
 export const metadata: Metadata = {
   title: "Doceo — Step-by-step STEM tutoring",
   description:
-    "Upload a problem, watch an AI tutor break it down on a whiteboard, ask questions as you learn.",
+    "Upload a problem, watch an AI tutor break it into an interactive step-by-step lesson, and ask questions as you learn.",
 };
 
 export default function RootLayout({

@@ -6,8 +6,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from app.schemas.session import SessionCreate, SessionResponse
-from app.models.session import create_session, get_session
+from app.schemas.session import SessionCreate, SessionResponse, SessionHistoryItem
+from app.models.session import create_session, get_session, list_sessions
 from app.services.ai_service import analyze_problem
 
 router = APIRouter()
@@ -16,6 +16,25 @@ router = APIRouter()
 def _error_message(exc: Exception) -> str:
     msg = str(exc).strip()
     return msg if msg else f"{type(exc).__name__}"
+
+
+@router.get("", response_model=list[SessionHistoryItem])
+async def get_session_history():
+    """List prior sessions for history navigation."""
+    sessions = list_sessions()
+    return [
+        SessionHistoryItem(
+            session_id=session["session_id"],
+            title=session["title"],
+            subject=session["subject"],
+            problem_text=session.get("problem_text"),
+            status=session["status"],
+            step_count=session["step_count"],
+            updated_at=session.get("updated_at"),
+            created_at=session.get("created_at"),
+        )
+        for session in sessions
+    ]
 
 
 @router.get("/{session_id}", response_model=SessionResponse)

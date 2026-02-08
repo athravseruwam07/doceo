@@ -71,7 +71,13 @@ export default function ExamCramPage() {
             href="/"
             className="text-[13px] text-[var(--ink-tertiary)] hover:text-[var(--ink)]"
           >
-            Tutor mode
+            Home
+          </Link>
+          <Link
+            href="/history"
+            className="text-[13px] text-[var(--ink-tertiary)] hover:text-[var(--ink)]"
+          >
+            History
           </Link>
         </div>
       </nav>

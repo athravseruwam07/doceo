@@ -1,4 +1,4 @@
-import { SessionResponse, ChatContextPayload, ChatMessage } from "./types";
+import { SessionResponse, ChatContextPayload, ChatMessage, ExamCramResponse, SessionHistoryItem } from "./types";
 import { convertBackendEvent } from "./timeline";
 
 const BASE = "/api";
@@ -146,6 +146,44 @@ export async function getSessionInfo(sessionId: string): Promise<SessionResponse
   const res = await fetch(`${BASE}/sessions/${sessionId}`);
   if (!res.ok) {
     const msg = await extractErrorMessage(res, `Session fetch failed (${res.status})`);
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function getSessionHistory(): Promise<SessionHistoryItem[]> {
+  const res = await fetch(`${BASE}/sessions`);
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Session history fetch failed (${res.status})`);
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function createExamCramPlanUpload(
+  sessionId: string,
+  data: {
+    files: File[];
+    notes?: string;
+    subject_hint?: string;
+    exam_name?: string;
+  }
+): Promise<ExamCramResponse> {
+  const form = new FormData();
+  for (const file of data.files) {
+    form.append("files", file);
+  }
+  if (data.notes) form.append("notes", data.notes);
+  if (data.subject_hint) form.append("subject_hint", data.subject_hint);
+  if (data.exam_name) form.append("exam_name", data.exam_name);
+
+  const res = await fetch(`${BASE}/sessions/${sessionId}/exam-cram/upload`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Exam cram generation failed (${res.status})`);
     throw new Error(msg);
   }
   return res.json();

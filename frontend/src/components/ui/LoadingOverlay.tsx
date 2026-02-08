@@ -7,7 +7,7 @@ import { BuildStage, VoiceStatus } from "@/lib/types";
 const STAGES = [
   { key: "analysis", label: "Analyzing your problem", icon: "🔍", duration: 3000 },
   { key: "planning", label: "Creating a detailed lesson plan", icon: "📝", duration: 5000 },
-  { key: "scripting", label: "Scripting whiteboard animations", icon: "🎬", duration: 6000 },
+  { key: "scripting", label: "Scripting interactive lesson visuals", icon: "🎬", duration: 6000 },
   { key: "voice", label: "Generating voice narration", icon: "🎙️", duration: 8000 },
   { key: "prepare", label: "Preparing your lesson", icon: "✨", duration: 4000 },
 ];

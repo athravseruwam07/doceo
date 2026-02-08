@@ -403,11 +403,10 @@ def _compose_recurring_patterns(
         count = len(topic_hits.get(topic_name, []))
         if count > 0:
             patterns.append(f"{topic_name} appears in at least {count} identified question blocks.")
+        else:
+            patterns.append(f"{topic_name} appears repeatedly across your uploaded materials.")
     if not patterns:
-        patterns = [
-            "Question families repeat across the uploaded materials.",
-            "Method selection and execution speed are recurring pressure points.",
-        ]
+        patterns = ["Your uploaded materials show repeated concept patterns worth targeted drills."]
     return patterns[:6]
 
 
@@ -594,25 +593,61 @@ def _build_deterministic_payload(
     practice_questions = _compose_practice_questions(prioritized_topics, topic_hits)
 
     if not prioritized_topics:
+        fallback_terms = [term for term in top_terms if term not in _GENERIC_TOPICS and term not in _STOPWORDS][:4]
+        if not fallback_terms:
+            for text in material_texts:
+                for raw in re.findall(r"[a-zA-Z][a-zA-Z0-9+-]*", text.lower()):
+                    token = _normalize_token(raw)
+                    if _is_useful_token(token):
+                        fallback_terms.append(token)
+                    if len(fallback_terms) >= 4:
+                        break
+                if len(fallback_terms) >= 4:
+                    break
+
         prioritized_topics = [
             {
-                "topic": "Core Exam Methods",
-                "likelihood": 0.75,
-                "why": "Detected repeated method-focused prompts across materials.",
-                "evidence": ["Method cues are repeatedly present in uploaded text."],
+                "topic": (fallback_terms[0].title() if fallback_terms else f"{subject} Core Concept"),
+                "likelihood": 0.72,
+                "why": "Detected repeated concept terms in your uploaded materials.",
+                "evidence": [
+                    f"High-frequency term detected: '{fallback_terms[0]}'." if fallback_terms else "Repeated topic cues found in your uploaded text."
+                ],
                 "study_actions": [
-                    "Create a one-page method selection checklist.",
-                    "Run a timed mixed-topic drill and review errors.",
+                    "Build a short method checklist from your own solved examples.",
+                    "Run a timed drill on the same concept family and review errors.",
                 ],
             }
         ]
+        for idx, term in enumerate(fallback_terms[1:], start=1):
+            prioritized_topics.append(
+                {
+                    "topic": term.title(),
+                    "likelihood": max(0.45, 0.72 - idx * 0.08),
+                    "why": "Repeatedly referenced in your uploaded notes/questions.",
+                    "evidence": [f"Frequent term detected: '{term}'."],
+                    "study_actions": [
+                        f"Practice 2 exam-style questions focused on {term}.",
+                        f"Summarize common mistakes for {term} in one page.",
+                    ],
+                }
+            )
+
+    if not focused_lessons:
+        focused_lessons = _compose_focused_lessons(prioritized_topics)
+
     if not practice_questions:
+        style_cue = question_blocks[0]["text"][:120] if question_blocks else ""
+        concept = prioritized_topics[0]["topic"] if prioritized_topics else f"{subject} Core Concept"
         practice_questions = [
             {
-                "question": "Build a timed exam set from your uploaded topics and solve with full reasoning.",
+                "question": (
+                    f"Build a timed exam-style question on {concept} and solve with full reasoning."
+                    + (f" Style cue from your material: \"{style_cue}\"." if style_cue else "")
+                ),
                 "difficulty": "medium",
-                "concept": prioritized_topics[0]["topic"],
-                "answer_outline": "Select the best method, show all intermediate steps, and verify the final result.",
+                "concept": concept,
+                "answer_outline": "Use the method implied by your material, show all intermediate steps, and verify the final result.",
             }
         ]
 

@@ -18,3 +18,14 @@ class SessionResponse(BaseModel):
     build_stage: Optional[str] = None
     audio_status: Optional[str] = None
     steps: Optional[list[dict]] = None
+
+
+class SessionHistoryItem(BaseModel):
+    session_id: str
+    title: str
+    subject: str
+    problem_text: Optional[str] = None
+    status: str
+    step_count: int
+    updated_at: Optional[str] = None
+    created_at: Optional[str] = None

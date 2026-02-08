@@ -1,5 +1,6 @@
 from typing import Optional
 import uuid
+from datetime import datetime, timezone
 
 _sessions: dict[str, dict] = {}
 
@@ -26,6 +27,8 @@ def create_session(
         "chat_log": [],
         "exam_materials": [],
         "exam_cram": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     _sessions[session_id] = session
     return session
@@ -38,5 +41,15 @@ def get_session(session_id: str) -> Optional[dict]:
 def update_session(session_id: str, **kwargs) -> Optional[dict]:
     if session_id in _sessions:
         _sessions[session_id].update(kwargs)
+        _sessions[session_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
         return _sessions[session_id]
     return None
+
+
+def list_sessions() -> list[dict]:
+    sessions = list(_sessions.values())
+    sessions.sort(
+        key=lambda item: item.get("updated_at") or item.get("created_at") or "",
+        reverse=True,
+    )
+    return sessions
