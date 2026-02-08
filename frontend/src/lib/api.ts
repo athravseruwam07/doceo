@@ -1,6 +1,18 @@
-import { SessionResponse, ChatMessage, ChatContextPayload } from "./types";
+import { SessionResponse, ChatContextPayload, ChatMessage } from "./types";
+import { convertBackendEvent } from "./timeline";
 
 const BASE = "/api";
+
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body?.detail) return typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    if (body?.message) return body.message;
+  } catch {
+    // response wasn't JSON
+  }
+  return fallback;
+}
 
 function normalizeAudioUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
@@ -8,35 +20,40 @@ function normalizeAudioUrl(url: string | undefined): string | undefined {
   return url;
 }
 
-function normalizeChatMessage(raw: ChatMessage): ChatMessage {
-  return {
-    ...raw,
-    audio_url: normalizeAudioUrl(raw.audio_url),
-    events: raw.events?.map((event) => ({
-      ...event,
-      payload: {
-        ...event.payload,
-        audioUrl: normalizeAudioUrl(event.payload.audioUrl),
-      },
-    })),
-  };
-}
-
 export async function createSession(
   data: FormData | { problem_text: string; subject_hint?: string }
 ): Promise<SessionResponse> {
   const isFormData = data instanceof FormData;
   const url = isFormData ? `${BASE}/sessions/upload` : `${BASE}/sessions`;
-  const res = await fetch(url, {
-    method: "POST",
-    ...(isFormData
-      ? { body: data }
-      : {
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        }),
-  });
-  if (!res.ok) throw new Error(`Session creation failed: ${res.status}`);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      signal: controller.signal,
+      ...(isFormData
+        ? { body: data }
+        : {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          }),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw new Error("Could not reach the server. Make sure the backend is running.");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Server error (${res.status}). Please try again.`);
+    throw new Error(msg);
+  }
   return res.json();
 }
 
@@ -66,14 +83,44 @@ export async function sendChatMessage(
     };
   }
 
-  const res = await fetch(`${BASE}/sessions/${sessionId}/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
-  const data = (await res.json()) as ChatMessage;
-  return normalizeChatMessage(data);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/sessions/${sessionId}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error("Could not reach the server. Please try again.");
+  }
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Chat failed (${res.status})`);
+    throw new Error(msg);
+  }
+  const data = (await res.json()) as ChatMessage & { events?: Record<string, unknown>[] };
+  const normalizedMessage: ChatMessage = {
+    ...data,
+    audio_url: normalizeAudioUrl(data.audio_url),
+  };
+
+  if (!Array.isArray(data.events)) {
+    return normalizedMessage;
+  }
+
+  const rawEvents = data.events.map((event) => ({
+    ...((event as unknown) as Record<string, unknown>),
+    payload: {
+      ...((event as { payload?: Record<string, unknown> }).payload ?? {}),
+      audioUrl: normalizeAudioUrl(
+        ((event as { payload?: { audioUrl?: string } }).payload?.audioUrl)
+      ),
+    },
+  })) as Record<string, unknown>[];
+
+  return {
+    ...normalizedMessage,
+    events: rawEvents.map((evt) => convertBackendEvent(evt)),
+  };
 }
 
 export async function getExport(sessionId: string): Promise<Blob> {
@@ -87,4 +134,28 @@ export async function getExport(sessionId: string): Promise<Blob> {
 
 export function getLessonStreamUrl(sessionId: string): string {
   return `${BASE}/sessions/${sessionId}/lesson/stream`;
+}
+
+export function getVoiceStreamUrl(sessionId: string): string {
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const wsBase = backendUrl.replace(/^http/, "ws").replace(/\/$/, "");
+  return `${wsBase}/sessions/${sessionId}/voice/stream`;
+}
+
+export async function getSessionInfo(sessionId: string): Promise<SessionResponse> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}`);
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Session fetch failed (${res.status})`);
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function getVoiceHealth(): Promise<{ status: string; detail?: string }> {
+  const res = await fetch(`${BASE}/audio/health`);
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Voice health failed (${res.status})`);
+    throw new Error(msg);
+  }
+  return res.json();
 }

@@ -7,7 +7,9 @@ class Settings(BaseSettings):
 
     # Gemini API
     gemini_api_key: str
-    gemini_model: str = "gemini-2.5-pro"
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_quality_model: str = "gemini-2.5-pro"
+    gemini_quality_fallback_enabled: bool = True
 
     # ElevenLabs API
     elevenlabs_api_key: str
@@ -21,6 +23,11 @@ class Settings(BaseSettings):
     # Optional: Rate limiting
     max_requests_per_minute: int = 10
     cache_audio_hours: int = 24
+
+    # Gemini request control
+    gemini_request_timeout_seconds: int = 120
+    gemini_max_retries: int = 1
+    gemini_retry_backoff_seconds: float = 1.5
 
     model_config = SettingsConfigDict(
         env_file=".env",
