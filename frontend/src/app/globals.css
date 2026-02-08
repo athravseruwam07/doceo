@@ -280,6 +280,36 @@ body {
   box-shadow: 0 -1px 4px rgba(26, 26, 26, 0.04);
 }
 
+/* Whiteboard grid lines for teaching canvas/side work */
+.whiteboard-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 65%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 65%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+[data-theme="dark"] .whiteboard-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 82%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 82%, transparent) 1px, transparent 1px);
+}
+
+/* Chat message entry */
+.chat-bubble {
+  animation: chat-bubble-in 180ms var(--ease-out);
+}
+
+@keyframes chat-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Equation summary items */
 .equation-summary-item .katex-display {
   margin: 0.5em 0 !important;

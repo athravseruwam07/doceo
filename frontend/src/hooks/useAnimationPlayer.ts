@@ -24,7 +24,7 @@ export function useAnimationPlayer(
     speed: 1,
     currentStep: 0,
     totalSteps: 0,
-    voiceEnabled: false,
+    voiceEnabled: true,
   });
 
   const [visibleEvents, setVisibleEvents] = useState<AnimationEvent[]>([]);
@@ -36,6 +36,7 @@ export function useAnimationPlayer(
   const speedRef = useRef<number>(1);
   const indexRef = useRef<number>(-1);
   const eventsRef = useRef<AnimationEvent[]>(events);
+  const advanceToEventRef = useRef<(index: number) => void>(() => {});
 
   // Keep refs in sync
   useEffect(() => {
@@ -45,18 +46,6 @@ export function useAnimationPlayer(
   useEffect(() => {
     speedRef.current = state.speed;
   }, [state.speed]);
-
-  // Count total steps from events
-  useEffect(() => {
-    if (events.length > 0) {
-      const stepCount = events.filter((e) => e.type === "step_marker").length;
-      setState((prev) => ({
-        ...prev,
-        status: prev.status === "loading" ? "loading" : prev.status,
-        totalSteps: stepCount,
-      }));
-    }
-  }, [events]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -110,20 +99,35 @@ export function useAnimationPlayer(
           setVisibleEvents((prev) => [...prev, event]);
         }
         // Advance to next
-        advanceToEvent(index + 1);
+        advanceToEventRef.current(index + 1);
       }, duration);
     },
     [] // no deps — uses refs
   );
 
+  useEffect(() => {
+    advanceToEventRef.current = advanceToEvent;
+  }, [advanceToEvent]);
+
   const play = useCallback(() => {
     if (eventsRef.current.length === 0) return;
+    const stepCount = eventsRef.current.filter(
+      (event) => event.type === "step_marker"
+    ).length;
     clearTimer();
     setVisibleEvents([]);
     setActiveEvent(null);
+    setState((prev) => ({
+      ...prev,
+      status: "loading",
+      currentStep: 0,
+      currentEventIndex: -1,
+      progress: 0,
+      totalSteps: stepCount,
+    }));
     indexRef.current = -1;
-    advanceToEvent(0);
-  }, [clearTimer, advanceToEvent]);
+    advanceToEventRef.current(0);
+  }, [clearTimer]);
 
   const pause = useCallback(() => {
     clearTimer();
@@ -144,9 +148,9 @@ export function useAnimationPlayer(
       if (event && event.type !== "pause" && event.type !== "step_marker") {
         setVisibleEvents((prev) => [...prev, event]);
       }
-      advanceToEvent(indexRef.current + 1);
+      advanceToEventRef.current(indexRef.current + 1);
     }, remaining);
-  }, [advanceToEvent]);
+  }, []);
 
   const interrupt = useCallback(() => {
     clearTimer();

@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 
 interface ChatInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string) => void | Promise<void>;
   disabled?: boolean;
 }
 
@@ -36,25 +36,30 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   return (
     <div className="flex items-end gap-2 p-3 border-t border-[var(--border)] bg-[var(--paper)]">
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onInput={handleInput}
-        placeholder="Ask a question..."
-        disabled={disabled}
-        rows={1}
-        className="
-          flex-1 resize-none
-          bg-transparent text-[13px] text-[var(--ink)]
-          font-[family-name:var(--font-body)]
-          placeholder:text-[var(--ink-faint)]
-          focus:outline-none
-          leading-[1.6]
-          max-h-[120px]
-        "
-      />
+      <div className="flex-1">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onInput={handleInput}
+          placeholder="Ask a question about what you're seeing now..."
+          disabled={disabled}
+          rows={1}
+          className="
+            w-full resize-none
+            bg-transparent text-[13px] text-[var(--ink)]
+            font-[family-name:var(--font-body)]
+            placeholder:text-[var(--ink-faint)]
+            focus:outline-none
+            leading-[1.6]
+            max-h-[120px]
+          "
+        />
+        <p className="mt-1 text-[10px] text-[var(--ink-faint)] font-[family-name:var(--font-body)]">
+          Enter to send · Shift+Enter for a new line
+        </p>
+      </div>
       <button
         onClick={handleSend}
         disabled={!value.trim() || disabled}

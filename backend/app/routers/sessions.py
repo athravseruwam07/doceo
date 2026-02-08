@@ -5,7 +5,6 @@ from typing import Optional
 
 from app.schemas.session import SessionCreate, SessionResponse
 from app.models.session import create_session, get_session
-from app.services.ai_service import analyze_problem
 
 router = APIRouter()
 
@@ -27,28 +26,26 @@ async def get_session_info(session_id: str):
 
 @router.post("", response_model=SessionResponse)
 async def create_session_json(body: SessionCreate):
-    """Create a new tutoring session from a JSON body with problem text."""
+    """Create a new tutoring session from a JSON body with problem text.
+
+    Returns immediately with a placeholder session. The actual Gemini lesson
+    generation happens lazily when the client opens the SSE stream
+    (GET /sessions/{id}/lesson/stream), which has no proxy timeout.
+    """
     problem_text = body.problem_text or ""
 
-    result = await analyze_problem(problem_text=problem_text)
-
     session = create_session(
-        title=result["title"],
-        subject=result["subject"],
+        title="Generating lesson...",
+        subject=body.subject_hint or "General STEM",
         problem_text=problem_text,
-        step_count=len(result["steps"]),
+        step_count=0,
     )
-
-    # Store the generated steps in the session
-    from app.models.session import update_session
-
-    update_session(session["session_id"], steps=result["steps"])
 
     return SessionResponse(
         session_id=session["session_id"],
-        title=result["title"],
-        subject=result["subject"],
-        step_count=len(result["steps"]),
+        title=session["title"],
+        subject=session["subject"],
+        step_count=0,
         status=session["status"],
     )
 
@@ -59,32 +56,25 @@ async def create_session_upload(
     problem_text: Optional[str] = Form(default=""),
     subject_hint: Optional[str] = Form(default=None),
 ):
-    """Create a new tutoring session from a file upload (image of a problem)."""
+    """Create a new tutoring session from a file upload (image of a problem).
+
+    Returns immediately. Gemini analysis happens lazily during SSE streaming.
+    """
     contents = await file.read()
     image_b64 = base64.b64encode(contents).decode("utf-8")
 
-    result = await analyze_problem(
-        problem_text=problem_text or "",
-        image_b64=image_b64,
-    )
-
     session = create_session(
-        title=result["title"],
-        subject=result["subject"],
+        title="Generating lesson...",
+        subject=subject_hint or "General STEM",
         problem_text=problem_text or "",
         image_b64=image_b64,
-        step_count=len(result["steps"]),
+        step_count=0,
     )
-
-    # Store the generated steps in the session
-    from app.models.session import update_session
-
-    update_session(session["session_id"], steps=result["steps"])
 
     return SessionResponse(
         session_id=session["session_id"],
-        title=result["title"],
-        subject=result["subject"],
-        step_count=len(result["steps"]),
+        title=session["title"],
+        subject=session["subject"],
+        step_count=0,
         status=session["status"],
     )

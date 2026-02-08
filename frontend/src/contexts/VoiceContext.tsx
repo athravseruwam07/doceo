@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useState, useCallback, useRef, useEffect } from "react";
+import React, { createContext, useCallback, useState, useEffect } from "react";
 import { AudioSyncPlayer } from "@/lib/audioPlayer";
 
 interface VoiceContextType {
@@ -16,14 +16,13 @@ export const VoiceContext = createContext<VoiceContextType | undefined>(
 );
 
 export function VoiceProvider({ children }: { children: React.ReactNode }) {
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const saved = localStorage.getItem("doceo-voice-enabled");
+    return saved === null ? true : saved === "true";
+  });
   const [playbackRate, setPlaybackRate] = useState(1);
-  const audioPlayerRef = useRef<AudioSyncPlayer | null>(null);
-
-  // Initialize audio player on first render
-  if (!audioPlayerRef.current) {
-    audioPlayerRef.current = new AudioSyncPlayer();
-  }
+  const [audioPlayer] = useState(() => new AudioSyncPlayer());
 
   // Load preference from localStorage on mount
   useEffect(() => {
@@ -44,28 +43,30 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const toggleVoice = useCallback(() => {
     setEnabled((prev) => {
       const next = !prev;
-      localStorage.setItem("doceo-voice-enabled", JSON.stringify(next));
-      if (!next && audioPlayerRef.current) {
-        // Muting — stop any playing audio immediately
-        audioPlayerRef.current.pause();
+      if (typeof window !== "undefined") {
+        localStorage.setItem("doceo-voice-enabled", JSON.stringify(next));
+      }
+      if (!next) {
+        audioPlayer.pause();
       }
       return next;
     });
-  }, []);
+  }, [audioPlayer]);
 
-  const handleSetPlaybackRate = useCallback((rate: number) => {
-    setPlaybackRate(rate);
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.setSpeed(rate);
-    }
-  }, []);
+  const handleSetPlaybackRate = useCallback(
+    (rate: number) => {
+      setPlaybackRate(rate);
+      audioPlayer.setSpeed(rate);
+    },
+    [audioPlayer]
+  );
 
   return (
     <VoiceContext.Provider
       value={{
         enabled,
         toggleVoice,
-        audioPlayer: audioPlayerRef.current,
+        audioPlayer,
         playbackRate,
         setPlaybackRate: handleSetPlaybackRate,
       }}

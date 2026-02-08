@@ -1,6 +1,26 @@
-import { SessionResponse, ChatMessage } from "./types";
+import { SessionResponse, ChatMessage, ChatContextPayload } from "./types";
 
 const BASE = "/api";
+
+function normalizeAudioUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/audio/")) return `${BASE}${url}`;
+  return url;
+}
+
+function normalizeChatMessage(raw: ChatMessage): ChatMessage {
+  return {
+    ...raw,
+    audio_url: normalizeAudioUrl(raw.audio_url),
+    events: raw.events?.map((event) => ({
+      ...event,
+      payload: {
+        ...event.payload,
+        audioUrl: normalizeAudioUrl(event.payload.audioUrl),
+      },
+    })),
+  };
+}
 
 export async function createSession(
   data: FormData | { problem_text: string; subject_hint?: string }
@@ -22,15 +42,38 @@ export async function createSession(
 
 export async function sendChatMessage(
   sessionId: string,
-  message: string
+  message: string,
+  context?: ChatContextPayload
 ): Promise<ChatMessage> {
+  const payload: {
+    message: string;
+    context?: {
+      current_step?: number;
+      current_step_title?: string;
+      current_event_type?: string;
+      active_narration?: string;
+    };
+  } = {
+    message,
+  };
+
+  if (context) {
+    payload.context = {
+      current_step: context.currentStep,
+      current_step_title: context.currentStepTitle,
+      current_event_type: context.currentEventType,
+      active_narration: context.activeNarration,
+    };
+  }
+
   const res = await fetch(`${BASE}/sessions/${sessionId}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
-  return res.json();
+  const data = (await res.json()) as ChatMessage;
+  return normalizeChatMessage(data);
 }
 
 export async function getExport(sessionId: string): Promise<Blob> {

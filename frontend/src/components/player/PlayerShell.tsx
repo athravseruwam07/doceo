@@ -2,13 +2,19 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LessonStep, ChatMessage as ChatMessageType } from "@/lib/types";
+import {
+  LessonStep,
+  ChatMessage as ChatMessageType,
+  ChatContextPayload,
+} from "@/lib/types";
 import { stepsToTimeline } from "@/lib/timeline";
 import { useAnimationPlayer } from "@/hooks/useAnimationPlayer";
+import { useTheme } from "@/hooks/useTheme";
 import { useVoicePlayer } from "@/hooks/useVoicePlayer";
 import WhiteboardCanvas from "./WhiteboardCanvas";
 import PlayerControls from "./PlayerControls";
 import LessonSummary from "./LessonSummary";
+import SidePanelWork from "./SidePanelWork";
 import ChatSidebar from "../chat/ChatSidebar";
 
 interface PlayerShellProps {
@@ -19,7 +25,10 @@ interface PlayerShellProps {
   isLessonComplete: boolean;
   messages: ChatMessageType[];
   chatLoading: boolean;
-  onSendMessage: (message: string) => Promise<void>;
+  onSendMessage: (
+    message: string,
+    context?: ChatContextPayload
+  ) => Promise<void>;
 }
 
 export default function PlayerShell({
@@ -36,6 +45,7 @@ export default function PlayerShell({
 
   const events = useMemo(() => stepsToTimeline(steps), [steps]);
   const player = useAnimationPlayer(events);
+  const { theme, toggleTheme } = useTheme();
   const voice = useVoicePlayer();
 
   // Track which narrate event we last started playing audio for
@@ -48,7 +58,7 @@ export default function PlayerShell({
     if (events.length > 0 && player.state.status === "loading") {
       player.play();
     }
-  }, [events.length, player.state.status, player.play]);
+  }, [events.length, player.state.status, player.play, player]);
 
   // ─── Voice: Play audio when a narrate event becomes active ───
   const voiceEnabled = voice.enabled;
@@ -137,6 +147,20 @@ export default function PlayerShell({
     return "";
   }, [player.visibleEvents, player.activeEvent]);
 
+  const currentStepTitle = useMemo(() => {
+    const step = steps.find((item) => item.step_number === player.state.currentStep);
+    return step?.title;
+  }, [steps, player.state.currentStep]);
+
+  const latestTutorMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "tutor") {
+        return messages[i];
+      }
+    }
+    return null;
+  }, [messages]);
+
   // Keyboard shortcuts
   const voiceToggle = voice.toggleVoice;
   useEffect(() => {
@@ -196,9 +220,33 @@ export default function PlayerShell({
     }
   }, [player]);
 
-  // Build player state with voice enabled flag for the controls bar
-  const playerStateWithVoice = useMemo(
-    () => ({ ...player.state, voiceEnabled: voice.enabled }),
+  const handleSetSpeed = useCallback(
+    (speed: number) => {
+      player.setSpeed(speed);
+      voice.setSpeed(speed);
+    },
+    [player, voice]
+  );
+
+  const handleSendChatMessage = useCallback(
+    async (message: string) => {
+      const context: ChatContextPayload = {
+        currentStep:
+          player.state.currentStep > 0 ? player.state.currentStep : undefined,
+        currentStepTitle,
+        currentEventType: player.activeEvent?.type,
+        activeNarration: narration || undefined,
+      };
+      await onSendMessage(message, context);
+    },
+    [onSendMessage, player.state.currentStep, player.activeEvent, currentStepTitle, narration]
+  );
+
+  const controlsState = useMemo(
+    () => ({
+      ...player.state,
+      voiceEnabled: voice.enabled,
+    }),
     [player.state, voice.enabled]
   );
 
@@ -214,7 +262,7 @@ export default function PlayerShell({
           events={events}
           messages={messages}
           chatLoading={chatLoading}
-          onSendMessage={onSendMessage}
+          onSendMessage={(message) => onSendMessage(message)}
         />
       </div>
     );
@@ -240,6 +288,26 @@ export default function PlayerShell({
           />
         </motion.div>
 
+        {/* Side panel work — desktop */}
+        <AnimatePresence>
+          {chatOpen && latestTutorMessage?.events?.length ? (
+            <motion.div
+              className="hidden xl:flex w-[350px] flex-shrink-0 border-l border-[var(--border)] bg-[var(--paper)]"
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 350, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="w-[350px]">
+                <SidePanelWork
+                  message={latestTutorMessage}
+                  voiceEnabled={voice.enabled}
+                />
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
         {/* Chat sidebar — desktop */}
         <AnimatePresence>
           {chatOpen && (
@@ -254,10 +322,11 @@ export default function PlayerShell({
                 <ChatSidebar
                   messages={messages}
                   loading={chatLoading}
-                  onSend={onSendMessage}
+                  onSend={handleSendChatMessage}
                   onClose={handleCloseChat}
                   isInterrupted={player.state.status === "interrupted"}
                   onContinue={handleContinue}
+                  voiceEnabled={voice.enabled}
                 />
               </div>
             </motion.div>
@@ -277,11 +346,12 @@ export default function PlayerShell({
               <ChatSidebar
                 messages={messages}
                 loading={chatLoading}
-                onSend={onSendMessage}
+                onSend={handleSendChatMessage}
                 onClose={handleCloseChat}
                 isMobileOverlay
                 isInterrupted={player.state.status === "interrupted"}
                 onContinue={handleContinue}
+                voiceEnabled={voice.enabled}
               />
             </motion.div>
           )}
@@ -290,12 +360,14 @@ export default function PlayerShell({
 
       {/* Controls bar */}
       <PlayerControls
-        state={playerStateWithVoice}
+        state={controlsState}
         onPlay={player.play}
         onPause={player.pause}
         onResume={player.resume}
         onInterrupt={handleInterrupt}
-        onSetSpeed={player.setSpeed}
+        onSetSpeed={handleSetSpeed}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         onToggleVoice={voice.toggleVoice}
       />
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useCallback } from "react";
+import { useCallback, useContext } from "react";
 import { VoiceContext } from "@/contexts/VoiceContext";
 
 export function useVoicePlayer() {
@@ -57,27 +57,16 @@ export function useVoicePlayer() {
     [enabled, audioPlayer]
   );
 
-  /**
-   * Pause audio playback
-   */
   const pauseAudio = useCallback(() => {
-    if (audioPlayer) {
-      audioPlayer.pause();
-    }
+    if (!audioPlayer) return;
+    audioPlayer.pause();
   }, [audioPlayer]);
 
-  /**
-   * Resume audio playback
-   */
   const resumeAudio = useCallback(() => {
-    if (audioPlayer) {
-      audioPlayer.resume();
-    }
+    if (!audioPlayer) return;
+    audioPlayer.resume();
   }, [audioPlayer]);
 
-  /**
-   * Set audio playback speed
-   */
   const setSpeed = useCallback(
     (speed: number) => {
       if (setPlaybackRate) {

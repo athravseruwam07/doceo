@@ -10,6 +10,7 @@ export function useTheme() {
   if (context === undefined) {
     return {
       theme: "light" as const,
+      setTheme: () => {},
       toggleTheme: () => {},
     };
   }

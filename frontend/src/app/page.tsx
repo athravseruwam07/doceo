@@ -13,15 +13,81 @@ import Spinner from "@/components/ui/Spinner";
 
 type InputMode = "upload" | "type";
 
+const SUBJECT_HINTS = [
+  "General STEM",
+  "Algebra",
+  "Calculus",
+  "Physics",
+  "Chemistry",
+  "Statistics",
+];
+
+const EXAMPLE_PROBLEMS = [
+  {
+    subject: "Calculus",
+    text: "Find the derivative of f(x) = 3x^4 - 2x^2 + 7x - 5",
+  },
+  {
+    subject: "Algebra",
+    text: "Solve the system: 2x + y = 11 and x - y = 1",
+  },
+  {
+    subject: "Physics",
+    text: "A 2kg object accelerates at 3m/s^2. What force is applied?",
+  },
+];
+
+const RECENT_PROBLEMS_KEY = "doceo-recent-problems";
+
+function getInitialRecentProblems(): string[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(RECENT_PROBLEMS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as string[];
+    return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function Home() {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const { file, setFile, text, setText, loading, error, submit } = useUpload();
+  const {
+    file,
+    setFile,
+    text,
+    setText,
+    subjectHint,
+    setSubjectHint,
+    loading,
+    error,
+    submit,
+  } = useUpload();
   const [mode, setMode] = useState<InputMode>("type");
+  const [recentProblems, setRecentProblems] = useState<string[]>(
+    getInitialRecentProblems
+  );
+
+  const saveRecentProblem = (problem: string) => {
+    const cleaned = problem.trim();
+    if (!cleaned || typeof window === "undefined") return;
+    const next = [cleaned, ...recentProblems.filter((p) => p !== cleaned)].slice(
+      0,
+      5
+    );
+    setRecentProblems(next);
+    localStorage.setItem(RECENT_PROBLEMS_KEY, JSON.stringify(next));
+  };
 
   const handleSubmit = async () => {
     const sessionId = await submit();
-    if (sessionId) router.push(`/lesson/${sessionId}`);
+    if (!sessionId) return;
+    if (text.trim()) {
+      saveRecentProblem(text.trim());
+    }
+    router.push(`/lesson/${sessionId}`);
   };
 
   const hasInput = !!file || text.trim().length > 0;
@@ -85,6 +151,21 @@ export default function Home() {
               Paste a screenshot or type a STEM problem. Doceo breaks it down on
               a whiteboard and walks you through every step.
             </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              {SUBJECT_HINTS.map((hint) => (
+                <button
+                  key={hint}
+                  onClick={() => setSubjectHint(hint)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors cursor-pointer ${
+                    subjectHint === hint
+                      ? "bg-[var(--emerald)] text-white"
+                      : "bg-[var(--paper)] border border-[var(--border)] text-[var(--ink-secondary)] hover:bg-[var(--cream-dark)]"
+                  }`}
+                >
+                  {hint}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Mode tabs */}
@@ -157,10 +238,54 @@ export default function Home() {
             </Button>
           </div>
 
-          <p className="text-center text-[12px] text-[var(--ink-faint)] mt-6 font-[family-name:var(--font-body)]">
-            Try: &ldquo;Find the derivative of f(x) = 3x&sup4; &minus; 2x&sup2;
-            + 7x &minus; 5&rdquo;
-          </p>
+          <div className="mt-7 space-y-4">
+            <div>
+              <p className="text-[12px] text-[var(--ink-tertiary)] mb-2 font-[family-name:var(--font-body)]">
+                Try an example:
+              </p>
+              <div className="space-y-2">
+                {EXAMPLE_PROBLEMS.map((example) => (
+                  <button
+                    key={example.text}
+                    onClick={() => {
+                      setMode("type");
+                      setSubjectHint(example.subject);
+                      setText(example.text);
+                    }}
+                    className="w-full text-left rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--paper)] px-3 py-2 hover:bg-[var(--cream-dark)] transition-colors cursor-pointer"
+                  >
+                    <p className="text-[11px] text-[var(--ink-tertiary)]">{example.subject}</p>
+                    <p className="text-[13px] text-[var(--ink-secondary)] leading-relaxed">
+                      {example.text}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {recentProblems.length > 0 && (
+              <div>
+                <p className="text-[12px] text-[var(--ink-tertiary)] mb-2 font-[family-name:var(--font-body)]">
+                  Recent problems:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {recentProblems.map((problem) => (
+                    <button
+                      key={problem}
+                      onClick={() => {
+                        setMode("type");
+                        setText(problem);
+                      }}
+                      className="max-w-full truncate rounded-full border border-[var(--border)] bg-[var(--paper)] px-3 py-1 text-[11px] text-[var(--ink-secondary)] hover:bg-[var(--cream-dark)] transition-colors cursor-pointer"
+                      title={problem}
+                    >
+                      {problem}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </motion.div>
       </main>
     </div>

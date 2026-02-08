@@ -9,11 +9,12 @@ import TypingIndicator from "./TypingIndicator";
 interface ChatSidebarProps {
   messages: ChatMessageType[];
   loading: boolean;
-  onSend: (message: string) => void;
+  onSend: (message: string) => void | Promise<void>;
   onClose?: () => void;
   isMobileOverlay?: boolean;
   isInterrupted?: boolean;
   onContinue?: () => void;
+  voiceEnabled?: boolean;
 }
 
 export default function ChatSidebar({
@@ -24,6 +25,7 @@ export default function ChatSidebar({
   isMobileOverlay = false,
   isInterrupted = false,
   onContinue,
+  voiceEnabled = true,
 }: ChatSidebarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +39,7 @@ export default function ChatSidebar({
   return (
     <div
       className={`
-        flex flex-col bg-[var(--paper)]
+        flex flex-col bg-[var(--paper)] min-w-0
         ${
           isMobileOverlay
             ? "fixed inset-0 z-50"
@@ -75,6 +77,15 @@ export default function ChatSidebar({
             </button>
           )}
         </div>
+      </div>
+
+      <div className="px-4 py-2 border-b border-[var(--border)] bg-[var(--paper-warm)] flex items-center justify-between">
+        <span className="text-[11px] text-[var(--ink-tertiary)] font-[family-name:var(--font-body)]">
+          Chat is contextual to the current lesson step
+        </span>
+        <span className="text-[11px] text-[var(--ink-tertiary)] font-[family-name:var(--font-body)]">
+          Voice {voiceEnabled ? "on" : "off"}
+        </span>
       </div>
 
       {/* Continue lesson button */}

@@ -27,6 +27,7 @@ export function useSSE<T = unknown>(url: string | null): UseSSEResult<T> {
     if (!url) return;
 
     cleanup();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setData([]);
     setError(null);
     setIsComplete(false);

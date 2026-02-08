@@ -14,7 +14,8 @@ async def chat(session_id: str, body: ChatRequest):
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    response = await handle_message(session_id, body.message)
+    context = body.context.model_dump(exclude_none=True) if body.context else None
+    response = await handle_message(session_id, body.message, context=context)
     if response is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
