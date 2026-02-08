@@ -14,19 +14,6 @@ export const ThemeContext = createContext<ThemeContextType | undefined>(
   undefined
 );
 
-function getInitialTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-
-  const savedTheme = localStorage.getItem("doceo-theme");
-  if (savedTheme === "dark" || savedTheme === "light") {
-    return savedTheme;
-  }
-
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
 function applyTheme(themeValue: Theme) {
   const html = document.documentElement;
   if (themeValue === "dark") {
@@ -37,7 +24,20 @@ function applyTheme(themeValue: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  // Always start with "light" to match SSR — hydrate real preference in useEffect
+  const [theme, setTheme] = useState<Theme>("light");
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("doceo-theme");
+    let resolved: Theme = "light";
+    if (savedTheme === "dark" || savedTheme === "light") {
+      resolved = savedTheme;
+    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      resolved = "dark";
+    }
+    setTheme(resolved);
+    applyTheme(resolved);
+  }, []);
 
   useEffect(() => {
     applyTheme(theme);
