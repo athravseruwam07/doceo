@@ -2,10 +2,20 @@
 
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from app.services.voice_service import get_voice_service
+
 router = APIRouter()
+
+
+@router.get("/health")
+async def voice_health(force: bool = Query(default=False)):
+    """Return ElevenLabs voice capability status."""
+    service = get_voice_service()
+    health = await service.get_health(force=force)
+    return health
 
 
 @router.get("/{filename}")

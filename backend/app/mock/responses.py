@@ -23,9 +23,9 @@ MOCK_LESSON_STEPS = [
             {
                 "id": "s1_e1_mock01",
                 "type": "narrate",
-                "duration": 4000,
+                "duration": 5000,
                 "payload": {
-                    "text": "Alright, let's start by looking at the function we need to differentiate.",
+                    "text": "Alright, let's start by looking at the function we need to differentiate. We have f of x equals three x to the fourth, minus two x squared, plus seven x, minus five.",
                     "step_number": 1,
                 },
             },
@@ -41,19 +41,19 @@ MOCK_LESSON_STEPS = [
             },
             {
                 "id": "s1_e3_mock01",
-                "type": "narrate",
-                "duration": 6000,
+                "type": "write_text",
+                "duration": 1200,
                 "payload": {
-                    "text": "This is a polynomial with four terms. We have a degree-4 term, a degree-2 term, a linear term, and a constant. Since it's a polynomial, we can differentiate it term by term.",
+                    "text": "Degree 4 polynomial, 4 terms",
                     "step_number": 1,
                 },
             },
             {
                 "id": "s1_e4_mock01",
-                "type": "write_text",
-                "duration": 1800,
+                "type": "narrate",
+                "duration": 4500,
                 "payload": {
-                    "text": "Terms: 3x\u2074 (deg 4), -2x\u00b2 (deg 2), 7x (deg 1), -5 (constant)",
+                    "text": "This is a degree four polynomial with four terms. Since it's a polynomial, we can differentiate it term by term using the power rule.",
                     "step_number": 1,
                 },
             },
@@ -96,9 +96,9 @@ MOCK_LESSON_STEPS = [
             {
                 "id": "s2_e1_mock01",
                 "type": "narrate",
-                "duration": 4500,
+                "duration": 5000,
                 "payload": {
-                    "text": "Now before we dive in, let me remind you of the key rule we'll be using \u2014 the power rule.",
+                    "text": "Before we dive in, let me remind you of the key rule. The power rule says: bring the exponent down as a coefficient, then subtract one from the exponent.",
                     "step_number": 2,
                 },
             },
@@ -114,15 +114,24 @@ MOCK_LESSON_STEPS = [
             },
             {
                 "id": "s2_e3_mock01",
-                "type": "narrate",
-                "duration": 5500,
+                "type": "write_text",
+                "duration": 900,
                 "payload": {
-                    "text": "The power rule says: bring the exponent down as a coefficient, then subtract one from the exponent. And when we have a coefficient already, we just multiply it through.",
+                    "text": "Power Rule",
                     "step_number": 2,
                 },
             },
             {
                 "id": "s2_e4_mock01",
+                "type": "narrate",
+                "duration": 4000,
+                "payload": {
+                    "text": "When we already have a coefficient, we just multiply it through. So the derivative of a times x to the n is a n x to the n minus one.",
+                    "step_number": 2,
+                },
+            },
+            {
+                "id": "s2_e5_mock01",
                 "type": "write_equation",
                 "duration": 2000,
                 "payload": {
@@ -132,16 +141,16 @@ MOCK_LESSON_STEPS = [
                 },
             },
             {
-                "id": "s2_e5_mock01",
+                "id": "s2_e6_mock01",
                 "type": "narrate",
                 "duration": 3000,
                 "payload": {
-                    "text": "And one more thing \u2014 the derivative of a constant is always zero.",
+                    "text": "And one more thing \u2014 the derivative of any constant is simply zero.",
                     "step_number": 2,
                 },
             },
             {
-                "id": "s2_e6_mock01",
+                "id": "s2_e7_mock01",
                 "type": "write_equation",
                 "duration": 1500,
                 "payload": {
@@ -151,7 +160,7 @@ MOCK_LESSON_STEPS = [
                 },
             },
             {
-                "id": "s2_e7_mock01",
+                "id": "s2_e8_mock01",
                 "type": "annotate",
                 "duration": 600,
                 "payload": {
@@ -161,7 +170,7 @@ MOCK_LESSON_STEPS = [
                 },
             },
             {
-                "id": "s2_e8_mock01",
+                "id": "s2_e9_mock01",
                 "type": "pause",
                 "duration": 1200,
                 "payload": {"step_number": 2},
@@ -189,23 +198,14 @@ MOCK_LESSON_STEPS = [
             {
                 "id": "s3_e1_mock01",
                 "type": "narrate",
-                "duration": 3500,
+                "duration": 4500,
                 "payload": {
-                    "text": "Great, now let's apply the power rule to each term one at a time.",
+                    "text": "Great, now let's apply the power rule to each term one at a time. Starting with three x to the fourth \u2014 we bring down the four, multiply by three, and reduce the exponent by one.",
                     "step_number": 3,
                 },
             },
             {
                 "id": "s3_e2_mock01",
-                "type": "narrate",
-                "duration": 4000,
-                "payload": {
-                    "text": "Starting with three x to the fourth. We bring down the 4, multiply by 3, and reduce the exponent by 1.",
-                    "step_number": 3,
-                },
-            },
-            {
-                "id": "s3_e3_mock01",
                 "type": "write_equation",
                 "duration": 2000,
                 "payload": {
@@ -215,16 +215,16 @@ MOCK_LESSON_STEPS = [
                 },
             },
             {
-                "id": "s3_e4_mock01",
+                "id": "s3_e3_mock01",
                 "type": "narrate",
-                "duration": 3000,
+                "duration": 3500,
                 "payload": {
-                    "text": "Next, negative 2 x squared. Bring down the 2, multiply, reduce the exponent.",
+                    "text": "Next, negative two x squared. Bring down the two, multiply, and reduce the exponent. That gives us negative four x.",
                     "step_number": 3,
                 },
             },
             {
-                "id": "s3_e5_mock01",
+                "id": "s3_e4_mock01",
                 "type": "write_equation",
                 "duration": 2000,
                 "payload": {
@@ -234,16 +234,16 @@ MOCK_LESSON_STEPS = [
                 },
             },
             {
-                "id": "s3_e6_mock01",
+                "id": "s3_e5_mock01",
                 "type": "narrate",
-                "duration": 2500,
+                "duration": 3000,
                 "payload": {
-                    "text": "For 7x, the exponent is 1 so we just get the coefficient \u2014 7.",
+                    "text": "For seven x, the exponent is one, so we just get the coefficient \u2014 seven. And the constant negative five becomes zero.",
                     "step_number": 3,
                 },
             },
             {
-                "id": "s3_e7_mock01",
+                "id": "s3_e6_mock01",
                 "type": "write_equation",
                 "duration": 1500,
                 "payload": {
@@ -253,16 +253,7 @@ MOCK_LESSON_STEPS = [
                 },
             },
             {
-                "id": "s3_e8_mock01",
-                "type": "narrate",
-                "duration": 2500,
-                "payload": {
-                    "text": "And the constant negative 5 \u2014 its derivative is simply zero.",
-                    "step_number": 3,
-                },
-            },
-            {
-                "id": "s3_e9_mock01",
+                "id": "s3_e7_mock01",
                 "type": "write_equation",
                 "duration": 1500,
                 "payload": {
@@ -272,7 +263,7 @@ MOCK_LESSON_STEPS = [
                 },
             },
             {
-                "id": "s3_e10_mock01",
+                "id": "s3_e8_mock01",
                 "type": "pause",
                 "duration": 1200,
                 "payload": {"step_number": 3},
@@ -297,9 +288,9 @@ MOCK_LESSON_STEPS = [
             {
                 "id": "s4_e1_mock01",
                 "type": "narrate",
-                "duration": 3500,
+                "duration": 4000,
                 "payload": {
-                    "text": "Now let's put it all together. We just combine each term's derivative.",
+                    "text": "Now let's put it all together. We combine each term's derivative to get f prime of x equals twelve x cubed minus four x plus seven.",
                     "step_number": 4,
                 },
             },
@@ -326,14 +317,23 @@ MOCK_LESSON_STEPS = [
             {
                 "id": "s4_e4_mock01",
                 "type": "narrate",
-                "duration": 5000,
+                "duration": 4000,
                 "payload": {
-                    "text": "And there's our answer! f prime of x equals 12 x cubed minus 4 x plus 7. This tells us the instantaneous rate of change of f at any point x.",
+                    "text": "And there's our answer! This derivative tells us the instantaneous rate of change of f at any point x.",
                     "step_number": 4,
                 },
             },
             {
                 "id": "s4_e5_mock01",
+                "type": "write_text",
+                "duration": 800,
+                "payload": {
+                    "text": "Rate of change at any x",
+                    "step_number": 4,
+                },
+            },
+            {
+                "id": "s4_e6_mock01",
                 "type": "pause",
                 "duration": 1200,
                 "payload": {"step_number": 4},
@@ -359,23 +359,14 @@ MOCK_LESSON_STEPS = [
             {
                 "id": "s5_e1_mock01",
                 "type": "narrate",
-                "duration": 4000,
+                "duration": 4500,
                 "payload": {
-                    "text": "Let's do a quick sanity check. We'll plug in x equals 1 into both the original function and the derivative.",
+                    "text": "Let's do a quick sanity check. We'll plug in x equals one into both the original function and the derivative to make sure everything looks right.",
                     "step_number": 5,
                 },
             },
             {
                 "id": "s5_e2_mock01",
-                "type": "narrate",
-                "duration": 2500,
-                "payload": {
-                    "text": "First, f of 1 gives us...",
-                    "step_number": 5,
-                },
-            },
-            {
-                "id": "s5_e3_mock01",
                 "type": "write_equation",
                 "duration": 2500,
                 "payload": {
@@ -385,11 +376,20 @@ MOCK_LESSON_STEPS = [
                 },
             },
             {
+                "id": "s5_e3_mock01",
+                "type": "write_text",
+                "duration": 700,
+                "payload": {
+                    "text": "f(1) = 3",
+                    "step_number": 5,
+                },
+            },
+            {
                 "id": "s5_e4_mock01",
                 "type": "narrate",
-                "duration": 2500,
+                "duration": 3500,
                 "payload": {
-                    "text": "And the derivative at x equals 1...",
+                    "text": "So f of one gives us three. Now the derivative at x equals one...",
                     "step_number": 5,
                 },
             },
@@ -408,7 +408,7 @@ MOCK_LESSON_STEPS = [
                 "type": "narrate",
                 "duration": 5000,
                 "payload": {
-                    "text": "So at x equals 1, the function value is 3 and the slope of the tangent line is 15. The degree also checks out \u2014 our original was degree 4, and the derivative is degree 3.",
+                    "text": "The slope of the tangent line at x equals one is fifteen. That makes sense \u2014 our original was degree four, and the derivative is degree three. Everything checks out!",
                     "step_number": 5,
                 },
             },
@@ -424,6 +424,15 @@ MOCK_LESSON_STEPS = [
             },
             {
                 "id": "s5_e8_mock01",
+                "type": "write_text",
+                "duration": 700,
+                "payload": {
+                    "text": "Slope = 15 at x = 1",
+                    "step_number": 5,
+                },
+            },
+            {
+                "id": "s5_e9_mock01",
                 "type": "pause",
                 "duration": 1200,
                 "payload": {"step_number": 5},
