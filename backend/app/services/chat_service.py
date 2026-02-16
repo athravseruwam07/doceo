@@ -2,8 +2,8 @@ import re
 import uuid
 from typing import Any
 
-from app.models.session import get_session, update_session
 from app.models.course import get_course, search_course_snippets
+from app.models.session import get_session, update_session
 from app.services.ai_service import generate_chat_response
 from app.services.confusion_service import analyze_confusion
 from app.services.voice_service import get_voice_service
@@ -85,8 +85,8 @@ def _build_chat_events(response: dict[str, Any], step_title: str | None) -> list
                 "step_marker",
                 350,
                 {
-                    "stepNumber": related_step,
-                    "stepTitle": step_title or f"Step {related_step}",
+                    "step_number": related_step,
+                    "step_title": step_title or f"Step {related_step}",
                     "position": "side",
                 },
             )
@@ -221,6 +221,11 @@ async def handle_message(
         audio_data = await voice_service.generate_narration_audio(narration)
         response["audio_url"] = audio_data.get("audio_url")
         response["audio_duration"] = audio_data.get("duration", 0)
+        if not response["audio_url"] and audio_data.get("error_code") == "missing_tts_permission":
+            print(
+                "[ChatService] Voice provider key is missing text_to_speech permission. "
+                "Returning chat response without narration audio."
+            )
     else:
         response["audio_url"] = None
         response["audio_duration"] = 0
@@ -230,7 +235,12 @@ async def handle_message(
     if step_title is None and context and isinstance(context.get("current_step_title"), str):
         step_title = context["current_step_title"]
 
-    response["events"] = _build_chat_events(response, step_title)
+    existing_events = response.get("events")
+    if isinstance(existing_events, list) and existing_events:
+        response["events"] = existing_events
+    else:
+        response["events"] = _build_chat_events(response, step_title)
+
     response["confusion_score"] = adaptation.get("score")
     response["confusion_level"] = adaptation.get("level")
     response["adaptation_mode"] = adaptation.get("mode")

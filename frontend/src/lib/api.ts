@@ -5,7 +5,10 @@ import {
   CourseSummary,
   CourseMaterial,
   CourseLesson,
+  ExamCramResponse,
+  SessionHistoryItem,
 } from "./types";
+import { convertBackendEvent } from "./timeline";
 
 type SessionCreatePayload = {
   problem_text: string;
@@ -208,8 +211,28 @@ export async function sendChatMessage(
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await getErrorMessage(res, "Chat failed"));
-  const data = (await res.json()) as ChatMessage;
-  return normalizeChatMessage(data);
+  const data = (await res.json()) as ChatMessage & { events?: Record<string, unknown>[] };
+  const normalized = normalizeChatMessage(data);
+
+  if (!Array.isArray(data.events)) {
+    return normalized;
+  }
+
+  const rawEvents = data.events.map((event) => ({
+    ...((event as unknown) as Record<string, unknown>),
+    payload: {
+      ...((event as { payload?: Record<string, unknown> }).payload ?? {}),
+      audioUrl: normalizeAudioUrl(
+        ((event as { payload?: { audioUrl?: string; audio_url?: string } }).payload?.audioUrl)
+        ?? ((event as { payload?: { audioUrl?: string; audio_url?: string } }).payload?.audio_url)
+      ),
+    },
+  })) as Record<string, unknown>[];
+
+  return {
+    ...normalized,
+    events: rawEvents.map((evt) => convertBackendEvent(evt)),
+  };
 }
 
 export async function getExport(sessionId: string): Promise<Blob> {
@@ -223,4 +246,53 @@ export async function getExport(sessionId: string): Promise<Blob> {
 
 export function getLessonStreamUrl(sessionId: string): string {
   return `${BASE}/sessions/${sessionId}/lesson/stream`;
+}
+
+export function getVoiceStreamUrl(sessionId: string): string {
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const wsBase = backendUrl.replace(/^http/, "ws").replace(/\/$/, "");
+  return `${wsBase}/sessions/${sessionId}/voice/stream`;
+}
+
+export async function getSessionHistory(): Promise<SessionHistoryItem[]> {
+  const res = await fetch(`${BASE}/sessions`);
+  if (!res.ok) {
+    throw new Error(await getErrorMessage(res, "Failed to fetch session history"));
+  }
+  return res.json();
+}
+
+export async function createExamCramPlanUpload(
+  sessionId: string,
+  data: {
+    files: File[];
+    notes?: string;
+    subject_hint?: string;
+    exam_name?: string;
+  }
+): Promise<ExamCramResponse> {
+  const form = new FormData();
+  for (const file of data.files) {
+    form.append("files", file);
+  }
+  if (data.notes) form.append("notes", data.notes);
+  if (data.subject_hint) form.append("subject_hint", data.subject_hint);
+  if (data.exam_name) form.append("exam_name", data.exam_name);
+
+  const res = await fetch(`${BASE}/sessions/${sessionId}/exam-cram/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    throw new Error(await getErrorMessage(res, "Exam cram generation failed"));
+  }
+  return res.json();
+}
+
+export async function getVoiceHealth(): Promise<{ status: string; detail?: string }> {
+  const res = await fetch(`${BASE}/audio/health?force=true`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(await getErrorMessage(res, "Voice health check failed"));
+  }
+  return res.json();
 }

@@ -71,6 +71,10 @@ def _normalize_session(session: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(created_at, str) or not created_at.strip():
         session["created_at"] = _utc_now_iso()
 
+    updated_at = session.get("updated_at")
+    if not isinstance(updated_at, str) or not updated_at.strip():
+        session["updated_at"] = session["created_at"]
+
     if "steps" not in session or not isinstance(session.get("steps"), list):
         session["steps"] = []
     if "chat_log" not in session or not isinstance(session.get("chat_log"), list):
@@ -79,10 +83,31 @@ def _normalize_session(session: dict[str, Any]) -> dict[str, Any]:
         session["status"] = "processing"
     if "step_count" not in session or not isinstance(session.get("step_count"), int):
         session["step_count"] = len(session.get("steps", []))
+
+    if "voice_status" not in session or not isinstance(session.get("voice_status"), str):
+        session["voice_status"] = "unknown"
+    if "build_stage" not in session or not isinstance(session.get("build_stage"), str):
+        session["build_stage"] = "received"
+    if "audio_status" not in session or not isinstance(session.get("audio_status"), str):
+        session["audio_status"] = "pending"
+
+    if not isinstance(session.get("exam_materials"), list):
+        session["exam_materials"] = []
+    if session.get("exam_cram") is not None and not isinstance(session.get("exam_cram"), dict):
+        session["exam_cram"] = None
+
     if session.get("lesson_type") not in {"full", "micro"}:
         session["lesson_type"] = "full"
     if not isinstance(session.get("include_voice"), bool):
         session["include_voice"] = True
+
+    course_id = session.get("course_id")
+    if not isinstance(course_id, str) or not course_id.strip():
+        session["course_id"] = None
+
+    course_label = session.get("course_label")
+    if not isinstance(course_label, str) or not course_label.strip():
+        session["course_label"] = None
 
     confusion_state = session.get("confusion_state")
     if not isinstance(confusion_state, dict):
@@ -120,6 +145,7 @@ def create_session(
     include_voice: bool = True,
 ) -> dict[str, Any]:
     session_id = str(uuid.uuid4())[:8]
+    include_voice_flag = bool(include_voice)
     session = {
         "session_id": session_id,
         "title": title,
@@ -128,13 +154,19 @@ def create_session(
         "image_b64": image_b64,
         "step_count": step_count,
         "status": "processing",
+        "voice_status": "unknown",
+        "build_stage": "received",
+        "audio_status": "pending" if include_voice_flag else "disabled",
         "steps": [],
         "chat_log": [],
         "course_id": course_id,
         "course_label": course_label,
         "lesson_type": lesson_type if lesson_type in {"full", "micro"} else "full",
-        "include_voice": bool(include_voice),
+        "include_voice": include_voice_flag,
+        "exam_materials": [],
+        "exam_cram": None,
         "created_at": _utc_now_iso(),
+        "updated_at": _utc_now_iso(),
         "confusion_state": _default_confusion_state(),
     }
     _sessions[session_id] = _normalize_session(session)
@@ -154,9 +186,19 @@ def update_session(session_id: str, **kwargs) -> Optional[dict[str, Any]]:
         return None
 
     _sessions[session_id].update(kwargs)
+    _sessions[session_id]["updated_at"] = _utc_now_iso()
     _normalize_session(_sessions[session_id])
     _save_sessions()
     return _sessions[session_id]
+
+
+def list_sessions() -> list[dict[str, Any]]:
+    sessions = [_normalize_session(session) for session in _sessions.values()]
+    sessions.sort(
+        key=lambda item: item.get("updated_at") or item.get("created_at") or "",
+        reverse=True,
+    )
+    return sessions
 
 
 def list_sessions_for_course(
@@ -164,10 +206,10 @@ def list_sessions_for_course(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for session in _sessions.values():
-        if session.get("course_id") != course_id:
+        normalized = _normalize_session(session)
+        if normalized.get("course_id") != course_id:
             continue
 
-        normalized = _normalize_session(session)
         problem_preview = str(normalized.get("problem_text", "")).strip()
         if len(problem_preview) > 180:
             problem_preview = problem_preview[:177].rstrip() + "..."
@@ -185,7 +227,10 @@ def list_sessions_for_course(
             }
         )
 
-    rows.sort(key=lambda row: str(row.get("created_at", "")), reverse=True)
+    rows.sort(
+        key=lambda row: str(row.get("created_at") or ""),
+        reverse=True,
+    )
     return rows[:limit]
 
 
@@ -193,7 +238,7 @@ def delete_sessions_for_course(course_id: str) -> int:
     to_remove = [
         session_id
         for session_id, session in _sessions.items()
-        if session.get("course_id") == course_id
+        if _normalize_session(session).get("course_id") == course_id
     ]
     if not to_remove:
         return 0

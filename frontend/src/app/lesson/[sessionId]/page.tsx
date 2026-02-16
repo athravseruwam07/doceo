@@ -1,104 +1,117 @@
 "use client";
 
-import { use, useEffect, useState, useMemo } from "react";
+import { use, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSSE } from "@/hooks/useSSE";
 import { useChat } from "@/hooks/useChat";
 import { getLessonStreamUrl, getSessionInfo } from "@/lib/api";
-import { LessonStep, SessionResponse } from "@/lib/types";
+import { BuildStage, LessonStep, LessonCompleteEvent, VoiceStatus } from "@/lib/types";
 import PlayerShell from "@/components/player/PlayerShell";
-import LoadingOverlay from "@/components/ui/LoadingOverlay";
+import LessonLoadingScreen, { clearLoadingPersistence } from "@/components/ui/LoadingOverlay";
 
 interface LessonPageProps {
   params: Promise<{ sessionId: string }>;
 }
 
-type SSEEvent = LessonStep & { message?: string; total_steps?: number };
+type SSEEvent = (LessonStep | LessonCompleteEvent) & { message?: string };
 
 export default function LessonPage({ params }: LessonPageProps) {
   const { sessionId } = use(params);
+  const searchParams = useSearchParams();
+  const loadingRun = searchParams.get("loadingRun");
+  const persistKey = loadingRun || sessionId;
   const url = getLessonStreamUrl(sessionId);
-  const { data, isConnected, error, isComplete } = useSSE<SSEEvent>(url);
+  const { data, error } = useSSE<SSEEvent>(url);
   const chat = useChat(sessionId);
-  const [session, setSession] = useState<SessionResponse | null>(null);
-  const [loadingElapsed, setLoadingElapsed] = useState(0);
+  const [buildStage, setBuildStage] = useState<BuildStage | undefined>(undefined);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus | undefined>(undefined);
+  const [problemText, setProblemText] = useState<string | undefined>(undefined);
+  const [sessionSteps, setSessionSteps] = useState<LessonStep[]>([]);
+  const steps = useMemo(
+    () => data.filter((event): event is LessonStep => "step_number" in event),
+    [data]
+  );
+  const mergedSteps = useMemo(() => {
+    if (steps.length === 0) return steps;
+    if (sessionSteps.length === 0) return steps;
+
+    const sessionStepByNumber = new Map<number, LessonStep>(
+      sessionSteps.map((step) => [step.step_number, step])
+    );
+
+    return steps.map((streamStep) => {
+      const hydrated = sessionStepByNumber.get(streamStep.step_number);
+      if (!hydrated) return streamStep;
+
+      const streamEvents = streamStep.events ?? [];
+      const hydratedEvents = hydrated.events ?? [];
+      const hydratedById = new Map(hydratedEvents.map((event) => [event.id, event]));
+
+      const mergedEvents = streamEvents.map((event) => {
+        const hydratedEvent = hydratedById.get(event.id);
+        if (!hydratedEvent) return event;
+        return {
+          ...event,
+          duration: hydratedEvent.duration ?? event.duration,
+          payload: {
+            ...event.payload,
+            ...hydratedEvent.payload,
+          },
+        };
+      });
+
+      return {
+        ...streamStep,
+        narration: hydrated.narration ?? streamStep.narration,
+        audio_url: hydrated.audio_url ?? streamStep.audio_url,
+        audio_duration: hydrated.audio_duration ?? streamStep.audio_duration,
+        events: mergedEvents,
+      };
+    });
+  }, [steps, sessionSteps]);
 
   useEffect(() => {
-    getSessionInfo(sessionId)
-      .then((payload) => payload || null)
-      .then(setSession)
-      .catch(() => {});
-  }, [sessionId]);
+    if (steps.length > 0 || error) {
+      clearLoadingPersistence(persistKey);
+    }
 
-  const { steps } = useMemo(() => {
-    const steps: LessonStep[] = [];
+    let active = true;
+    let timer: number | undefined;
 
-    for (const event of data) {
-      if ("step_number" in event) {
-        steps.push(event as LessonStep);
+    const poll = async () => {
+      try {
+        const session = await getSessionInfo(sessionId);
+        if (!active) return;
+        setBuildStage(session.build_stage as BuildStage | undefined);
+        setVoiceStatus(session.voice_status as VoiceStatus | undefined);
+        setProblemText(session.problem_text);
+        if (Array.isArray(session.steps) && session.steps.length > 0) {
+          setSessionSteps(session.steps);
+        }
+      } catch {
+        // ignore poll errors while loading
+      } finally {
+        if (active) timer = window.setTimeout(poll, 1500);
       }
-    }
-
-    return { steps };
-  }, [data]);
-
-  useEffect(() => {
-    if (steps.length > 0 || error) return;
-    const startedAt = Date.now();
-    const timer = window.setInterval(() => {
-      setLoadingElapsed(Math.floor((Date.now() - startedAt) / 1000));
-    }, 500);
-    return () => window.clearInterval(timer);
-  }, [steps.length, error]);
-
-  const loadingPhase = useMemo(() => {
-    if (loadingElapsed < 5) {
-      return {
-        index: 0,
-        message: "Analyzing your problem...",
-        subMessage: "Understanding problem structure and key concepts.",
-        progress: (loadingElapsed / 5) * 0.33,
-      };
-    }
-    if (loadingElapsed < 15) {
-      return {
-        index: 1,
-        message: "Creating lesson plan...",
-        subMessage: "Sequencing a step-by-step explanation tailored to your input.",
-        progress: 0.33 + ((loadingElapsed - 5) / 10) * 0.34,
-      };
-    }
-    return {
-      index: 2,
-      message: "Generating voice narration...",
-      subMessage: "Preparing synchronized explanation and whiteboard flow.",
-      progress: 0.67 + Math.min((loadingElapsed - 15) / 25, 1) * 0.3,
     };
-  }, [loadingElapsed]);
 
-  // Loading state — waiting for first step
+    void poll();
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [sessionId, steps.length, error, persistKey]);
+
+  // Loading state — show staged progress screen
   if (steps.length === 0 && !error) {
     return (
-      <div className="min-h-screen bg-[var(--cream)] relative overflow-hidden">
-        <div className="mx-auto max-w-5xl px-6 py-12">
-          <div className="h-[80px] rounded-[var(--radius-lg)] bg-[var(--paper)] border border-[var(--border)] animate-pulse mb-4" />
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="h-[360px] rounded-[var(--radius-lg)] bg-[var(--paper)] border border-[var(--border)] animate-pulse" />
-            <div className="h-[360px] rounded-[var(--radius-lg)] bg-[var(--paper)] border border-[var(--border)] animate-pulse" />
-          </div>
-        </div>
-        <LoadingOverlay
-          isVisible
-          message={loadingPhase.message}
-          subMessage={
-            isConnected
-              ? `${loadingPhase.subMessage} Connected to lesson stream.`
-              : `${loadingPhase.subMessage} Waiting for stream connection...`
-          }
-          phaseIndex={loadingPhase.index}
-          progress={loadingPhase.progress}
-        />
-      </div>
+      <LessonLoadingScreen
+        persistKey={persistKey}
+        phase="lesson"
+        buildStage={buildStage}
+        voiceStatus={voiceStatus}
+      />
     );
   }
 
@@ -107,12 +120,20 @@ export default function LessonPage({ params }: LessonPageProps) {
     return (
       <div className="h-screen flex items-center justify-center bg-[var(--cream)]">
         <div className="text-center max-w-sm">
-          <p className="text-[14px] text-[var(--error)] mb-2 font-[family-name:var(--font-body)]">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-50 flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M12 9v4m0 4h.01M12 3l9.66 16.59a1 1 0 01-.87 1.5H3.21a1 1 0 01-.87-1.5L12 3z" stroke="var(--error)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <p className="text-[15px] text-[var(--ink)] font-medium mb-1 font-[family-name:var(--font-heading)]">
+            Something went wrong
+          </p>
+          <p className="text-[13px] text-[var(--ink-secondary)] mb-4 font-[family-name:var(--font-body)]">
             {error}
           </p>
           <Link
             href="/"
-            className="text-[13px] text-[var(--emerald)] hover:underline font-[family-name:var(--font-body)]"
+            className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-[var(--emerald)] rounded-lg hover:bg-[var(--emerald-dark)] transition-colors font-[family-name:var(--font-body)]"
           >
             Try again
           </Link>
@@ -121,19 +142,15 @@ export default function LessonPage({ params }: LessonPageProps) {
     );
   }
 
-  const title = session?.title ?? "Lesson";
-  const subject = session?.subject ?? "STEM";
-
   return (
     <PlayerShell
       sessionId={sessionId}
-      title={title}
-      subject={subject}
-      steps={steps}
-      isLessonComplete={isComplete}
+      steps={mergedSteps}
       messages={chat.messages}
       chatLoading={chat.loading}
       onSendMessage={chat.sendMessage}
+      voiceStatus={voiceStatus}
+      problemText={problemText}
     />
   );
 }

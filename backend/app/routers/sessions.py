@@ -1,19 +1,29 @@
 import base64
-
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+import logging
 from typing import Any, Optional
 
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+
 from app.models.course import get_course, search_course_snippets
-from app.models.session import create_session, get_session, update_session
-from app.schemas.session import MicroLessonCreate, SessionCreate, SessionResponse
-from app.services.ai_service import (
-    AIServiceError,
-    analyze_problem,
-    generate_micro_lesson,
+from app.models.session import create_session, get_session, list_sessions, update_session
+from app.schemas.session import (
+    MicroLessonCreate,
+    SessionCreate,
+    SessionHistoryItem,
+    SessionResponse,
 )
+from app.services.ai_service import AIServiceError, analyze_problem, generate_micro_lesson
 from app.services.micro_lesson_service import prepare_micro_lesson_steps
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def _error_message(exc: Exception) -> str:
+    msg = str(exc).strip()
+    return msg if msg else f"{type(exc).__name__}"
 
 
 def _build_session_response(session: dict[str, Any]) -> SessionResponse:
@@ -24,9 +34,15 @@ def _build_session_response(session: dict[str, Any]) -> SessionResponse:
         session_id=session["session_id"],
         title=session["title"],
         subject=session["subject"],
+        problem_text=session.get("problem_text"),
         step_count=session["step_count"],
         status=session["status"],
+        voice_status=session.get("voice_status"),
+        build_stage=session.get("build_stage"),
+        audio_status=session.get("audio_status"),
+        steps=session.get("steps"),
         created_at=session.get("created_at"),
+        updated_at=session.get("updated_at"),
         course_id=session.get("course_id"),
         course_label=session.get("course_label"),
         confusion_score=confusion_state.get("score"),
@@ -90,8 +106,31 @@ def _create_and_store_session(
         subject=subject,
         steps=steps,
         step_count=len(steps),
+        build_stage="script_ready",
     )
     return get_session(session["session_id"]) or session
+
+
+@router.get("", response_model=list[SessionHistoryItem])
+async def get_session_history():
+    """List prior sessions for history navigation."""
+    sessions = list_sessions()
+    return [
+        SessionHistoryItem(
+            session_id=session["session_id"],
+            title=session["title"],
+            subject=session["subject"],
+            problem_text=session.get("problem_text"),
+            status=session["status"],
+            step_count=session["step_count"],
+            updated_at=session.get("updated_at"),
+            created_at=session.get("created_at"),
+            course_id=session.get("course_id"),
+            course_label=session.get("course_label"),
+            lesson_type=session.get("lesson_type"),
+        )
+        for session in sessions
+    ]
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
@@ -126,10 +165,13 @@ async def create_session_json(body: SessionCreate):
         except AIServiceError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+        resolved_problem_text = (
+            problem_text.strip() or str(result.get("problem_statement", "")).strip()
+        )
         session = _create_and_store_session(
             title=result["title"],
             subject=result["subject"],
-            problem_text=problem_text,
+            problem_text=resolved_problem_text,
             image_b64=None,
             steps=result["steps"],
             course_id=course_id,
@@ -141,7 +183,11 @@ async def create_session_json(body: SessionCreate):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Session creation failed: {exc}") from exc
+        logger.exception("Session creation failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Session creation failed: {_error_message(exc)}",
+        ) from exc
 
 
 @router.post("/upload", response_model=SessionResponse)
@@ -152,8 +198,14 @@ async def create_session_upload(
     course_id: Optional[str] = Form(default=None),
 ):
     """Create a new tutoring session from a file upload (image of a problem)."""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload an image.")
+
+    contents = await file.read()
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
+
     try:
-        contents = await file.read()
         image_b64 = base64.b64encode(contents).decode("utf-8")
         resolved_course_id = course_id or None
         course_label, course_snippets = _resolve_course_context(
@@ -174,10 +226,14 @@ async def create_session_upload(
         except AIServiceError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+        resolved_problem_text = (
+            (problem_text or "").strip()
+            or str(result.get("problem_statement", "")).strip()
+        )
         session = _create_and_store_session(
             title=result["title"],
             subject=result["subject"],
-            problem_text=problem_text or "",
+            problem_text=resolved_problem_text,
             image_b64=image_b64,
             steps=result["steps"],
             course_id=resolved_course_id,
@@ -189,7 +245,11 @@ async def create_session_upload(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Session creation failed: {exc}") from exc
+        logger.exception("Session upload creation failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Session creation failed: {_error_message(exc)}",
+        ) from exc
 
 
 @router.post("/micro", response_model=SessionResponse)
@@ -234,7 +294,11 @@ async def create_micro_session_json(body: MicroLessonCreate):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Session creation failed: {exc}") from exc
+        logger.exception("Micro session creation failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Session creation failed: {_error_message(exc)}",
+        ) from exc
 
 
 @router.post("/micro/upload", response_model=SessionResponse)
@@ -246,8 +310,14 @@ async def create_micro_session_upload(
     include_voice: bool = Form(default=True),
 ):
     """Create a short micro-lesson from uploaded image/text."""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload an image.")
+
+    contents = await file.read()
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
+
     try:
-        contents = await file.read()
         image_b64 = base64.b64encode(contents).decode("utf-8")
         resolved_course_id = course_id or None
         course_label, course_snippets = _resolve_course_context(
@@ -286,4 +356,8 @@ async def create_micro_session_upload(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Session creation failed: {exc}") from exc
+        logger.exception("Micro upload session creation failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Session creation failed: {_error_message(exc)}",
+        ) from exc

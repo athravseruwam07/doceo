@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { InlineMath } from "react-katex";
 
 interface AnimatedTextProps {
   text: string;
   duration: number;
   isAnimating: boolean;
+  animationProgress?: number;
+  teachingPhase?: "setup" | "derive" | "checkpoint" | "result";
 }
 
 interface TextSegment {
@@ -14,9 +16,14 @@ interface TextSegment {
   content: string;
 }
 
+interface TextChunk {
+  type: "text" | "math" | "bold";
+  content: string;
+  weight: number;
+}
+
 function parseSegments(text: string): TextSegment[] {
   const segments: TextSegment[] = [];
-  // Match inline math $...$ and bold **...**
   const pattern = /(\$[^$\n]+?\$|\*\*[^*]+?\*\*)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -44,107 +51,182 @@ function parseSegments(text: string): TextSegment[] {
   return segments;
 }
 
+function splitTextIntoChunks(content: string): string[] {
+  const compact = content.replace(/\s+/g, " ").trim();
+  if (!compact) return [];
+  const phrases = compact.match(/[^,.;:!?]+[,.!?;:]?\s*/g);
+  if (!phrases) return [compact];
+
+  const chunks: string[] = [];
+  for (const phrase of phrases) {
+    const words = phrase.trim().split(/\s+/).filter(Boolean);
+    if (words.length <= 4) {
+      chunks.push(phrase);
+      continue;
+    }
+    let cursor = 0;
+    while (cursor < words.length) {
+      const slice = words.slice(cursor, cursor + 4).join(" ");
+      const suffix = cursor + 4 >= words.length && /[,.!?;:]$/.test(phrase.trim()) ? " " : " ";
+      chunks.push(`${slice}${suffix}`);
+      cursor += 4;
+    }
+  }
+  return chunks;
+}
+
+function buildChunks(text: string): TextChunk[] {
+  const segments = parseSegments(text);
+  const chunks: TextChunk[] = [];
+
+  for (const seg of segments) {
+    if (seg.type === "math") {
+      chunks.push({ type: "math", content: seg.content, weight: 1.8 });
+      continue;
+    }
+    if (seg.type === "bold") {
+      const pieces = splitTextIntoChunks(seg.content);
+      if (pieces.length === 0) continue;
+      for (const piece of pieces) {
+        chunks.push({ type: "bold", content: piece, weight: /[,.!?;:]\s*$/.test(piece) ? 1.55 : 1.2 });
+      }
+      continue;
+    }
+    const pieces = splitTextIntoChunks(seg.content);
+    if (pieces.length === 0) continue;
+    for (const piece of pieces) {
+      chunks.push({ type: "text", content: piece, weight: /[,.!?;:]\s*$/.test(piece) ? 1.45 : 1 });
+    }
+  }
+
+  return chunks;
+}
+
 export default function AnimatedText({
   text,
   duration,
   isAnimating,
+  animationProgress,
+  teachingPhase,
 }: AnimatedTextProps) {
-  const segments = parseSegments(text);
+  const chunks = buildChunks(text);
+  const totalChunks = chunks.length;
+  const totalWeight = chunks.reduce((sum, chunk) => sum + chunk.weight, 0);
+  const [revealPosition, setRevealPosition] = useState(isAnimating ? 0 : totalChunks);
+  const rafRef = useRef<number>(0);
+  const startRef = useRef(0);
 
-  // Build a flat character map: for each visible character position,
-  // track which segment it belongs to and its position within that segment
-  const charMap: { segIndex: number; charIndex: number }[] = [];
-  for (let s = 0; s < segments.length; s++) {
-    const seg = segments[s];
-    if (seg.type === "math") {
-      // Math is revealed as a single unit
-      charMap.push({ segIndex: s, charIndex: 0 });
-    } else {
-      for (let c = 0; c < seg.content.length; c++) {
-        charMap.push({ segIndex: s, charIndex: c });
+  const weightedRevealPosition = useCallback((progress: number): number => {
+    if (totalChunks === 0 || totalWeight <= 0) return totalChunks;
+    const phaseScale = teachingPhase === "result"
+      ? 0.95
+      : teachingPhase === "checkpoint"
+        ? 0.9
+        : teachingPhase === "derive"
+          ? 0.96
+          : 1;
+    const eased = Math.min(1, Math.max(0, progress / phaseScale));
+    const targetWeight = eased * totalWeight;
+    let consumed = 0;
+    for (let i = 0; i < chunks.length; i += 1) {
+      const chunkWeight = chunks[i].weight;
+      const next = consumed + chunkWeight;
+      if (targetWeight <= next) {
+        const partial = chunkWeight > 0 ? (targetWeight - consumed) / chunkWeight : 0;
+        return Math.min(totalChunks, Math.max(0, i + partial));
       }
+      consumed = next;
     }
-  }
-
-  const totalChars = charMap.length;
-  const [revealedCount, setRevealedCount] = useState(
-    isAnimating ? 0 : totalChars
-  );
+    return totalChunks;
+  }, [chunks, teachingPhase, totalChunks, totalWeight]);
 
   useEffect(() => {
+    if (animationProgress !== undefined) return;
+    let cancelled = false;
+
     if (!isAnimating) {
-      setRevealedCount(totalChars);
-      return;
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (!cancelled) setRevealPosition(totalChunks);
+      });
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(rafRef.current);
+      };
     }
 
-    setRevealedCount(0);
-    if (totalChars === 0) return;
-
-    const interval = Math.max(8, duration / totalChars);
-    let count = 0;
-
-    const timer = setInterval(() => {
-      count++;
-      if (count >= totalChars) {
-        setRevealedCount(totalChars);
-        clearInterval(timer);
+    if (totalChunks === 0) return;
+    startRef.current = performance.now();
+    rafRef.current = requestAnimationFrame(() => {
+      if (!cancelled) setRevealPosition(0);
+    });
+    const tick = () => {
+      const elapsed = performance.now() - startRef.current;
+      const rawProgress = Math.min(1, elapsed / duration);
+      setRevealPosition(weightedRevealPosition(rawProgress));
+      if (rawProgress < 1) {
+        rafRef.current = requestAnimationFrame(tick);
       } else {
-        setRevealedCount(count);
+        setRevealPosition(totalChunks);
       }
-    }, interval);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [isAnimating, duration, totalChunks, animationProgress, weightedRevealPosition]);
 
-    return () => clearInterval(timer);
-  }, [isAnimating, duration, totalChars]);
-
-  // Determine which segments/characters are visible
-  const revealedSegments = new Set<number>();
-  const revealedCharsPerSeg: Record<number, number> = {};
-
-  for (let i = 0; i < revealedCount; i++) {
-    const { segIndex, charIndex } = charMap[i];
-    revealedSegments.add(segIndex);
-    revealedCharsPerSeg[segIndex] = Math.max(
-      revealedCharsPerSeg[segIndex] ?? 0,
-      charIndex + 1
-    );
-  }
-
-  // Check if text is a list item
-  const isBullet = text.match(/^(\s*[-•]\s|^\s*\d+\.\s)/);
+  const isBullet = text.match(/^(\s*[-\u2022]\s|^\s*\d+\.\s)/);
+  const visiblePosition =
+    animationProgress !== undefined ? weightedRevealPosition(animationProgress) : revealPosition;
+  const visibleChunkCount = Math.floor(visiblePosition);
+  const partialChunkOpacity = Math.min(1, Math.max(0, visiblePosition - visibleChunkCount));
+  const partialChunk = chunks[visibleChunkCount];
 
   return (
     <div
       className={`typewriter-line leading-relaxed text-[15px] text-[var(--ink-secondary)] font-[family-name:var(--font-body)] ${isBullet ? "ml-2" : ""}`}
     >
-      {segments.map((seg, i) => {
-        if (!revealedSegments.has(i)) return null;
-
-        if (seg.type === "math") {
+      {chunks.slice(0, visibleChunkCount).map((chunk, i) => {
+        if (chunk.type === "math") {
           return (
             <span key={i} className="inline mx-0.5">
-              <InlineMath math={seg.content} />
+              <InlineMath math={chunk.content} />
             </span>
           );
         }
 
-        if (seg.type === "bold") {
-          const visibleCount = revealedCharsPerSeg[i] ?? 0;
-          const visibleText = seg.content.slice(0, visibleCount);
+        if (chunk.type === "bold") {
           return (
             <strong key={i} className="font-semibold text-[var(--ink)]">
-              {visibleText}
+              {chunk.content}
             </strong>
           );
         }
 
-        // Regular text
-        const visibleCount = revealedCharsPerSeg[i] ?? 0;
-        const visibleText = seg.content.slice(0, visibleCount);
-        return <span key={i}>{visibleText}</span>;
+        return <span key={i}>{chunk.content}</span>;
       })}
-      {/* Typing cursor */}
-      {isAnimating && revealedCount < totalChars && (
-        <span className="typing-cursor" />
+      {partialChunk && partialChunkOpacity > 0.02 && (
+        partialChunk.type === "math" ? (
+          <span
+            className="inline mx-0.5"
+            style={{ opacity: partialChunkOpacity, transform: "translateY(0.4px)", display: "inline-block" }}
+          >
+            <InlineMath math={partialChunk.content} />
+          </span>
+        ) : partialChunk.type === "bold" ? (
+          <strong
+            className="font-semibold text-[var(--ink)]"
+            style={{ opacity: partialChunkOpacity, transform: "translateY(0.4px)", display: "inline-block" }}
+          >
+            {partialChunk.content}
+          </strong>
+        ) : (
+          <span style={{ opacity: partialChunkOpacity, transform: "translateY(0.4px)", display: "inline-block" }}>
+            {partialChunk.content}
+          </span>
+        )
       )}
     </div>
   );

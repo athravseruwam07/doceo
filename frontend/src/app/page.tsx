@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { useUpload } from "@/hooks/useUpload";
 import { useTheme } from "@/hooks/useTheme";
 import {
@@ -338,6 +339,18 @@ export default function Home() {
           Doceo
         </span>
         <div className="flex items-center gap-4">
+          <Link
+            href="/exam-cram"
+            className="px-3 py-1.5 rounded-md border border-[var(--border)] text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)] hover:bg-[var(--cream-dark)] transition-colors font-[family-name:var(--font-body)]"
+          >
+            Exam Cram
+          </Link>
+          <Link
+            href="/history"
+            className="px-3 py-1.5 rounded-md border border-[var(--border)] text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)] hover:bg-[var(--cream-dark)] transition-colors font-[family-name:var(--font-body)]"
+          >
+            History
+          </Link>
           <button
             onClick={toggleTheme}
             className="p-2 rounded-md hover:bg-[var(--cream-dark)] transition-colors cursor-pointer"

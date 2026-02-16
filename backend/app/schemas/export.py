@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any
 
 
@@ -11,3 +11,5 @@ class ExportResponse(BaseModel):
     lesson_type: str | None = None
     include_voice: bool | None = None
     confusion_state: dict[str, Any] | None = None
+    exam_materials: list = Field(default_factory=list)
+    exam_cram: dict | None = None

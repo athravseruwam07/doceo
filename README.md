@@ -4,13 +4,26 @@ Interactive AI tutor that teaches STEM problems step-by-step on an animated whit
 
 ## Features
 
-✨ **Real-time AI Lesson Generation**: Uses Google Gemini API to analyze any math/science problem and create custom step-by-step lessons
-🎙️ **Voice Narration**: ElevenLabs text-to-speech synced with whiteboard animations
-🖊️ **Interactive Whiteboard**: Animated equations and annotations reveal naturally
-💬 **Ask Questions Mid-Lesson**: Interrupt the tutor, ask clarifying questions, and get instant contextual answers
-🌓 **Light/Dark Theme**: Beautiful theme system with dark mode support
-📱 **Responsive Design**: Works on desktop, tablet, and mobile
-⚡ **Fast Generation**: Lessons generated in 10-30 seconds
+✨ **Real-time AI Lesson Generation**  
+Uses Google Gemini API to analyze any math or science problem and generate custom step-by-step lessons.
+
+🎙 **Voice Narration**  
+Gemini text-to-speech synced precisely with whiteboard animations.
+
+✏️ **Interactive Whiteboard**  
+Equations, diagrams, and annotations animate naturally as if written by a real teacher.
+
+💬 **Ask Questions Mid-Lesson**  
+Interrupt the tutor at any time to ask clarifying questions and receive instant, contextual explanations.
+
+🌗 **Light / Dark Theme**  
+Beautiful theme system with full dark-mode support.
+
+📱 **Responsive Design**  
+Works seamlessly on desktop, tablet, and mobile devices.
+
+⚡ **Fast Generation**  
+Lessons are generated in approximately 10–30 seconds.
 
 ## Setup
 
@@ -19,7 +32,6 @@ Interactive AI tutor that teaches STEM problems step-by-step on an animated whit
 - Python 3.11+
 - Node.js 18+
 - Google Gemini API key ([get one here](https://ai.google.dev))
-- ElevenLabs API key ([get one here](https://elevenlabs.io))
 
 ### Backend Setup
 
@@ -37,7 +49,6 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env and add:
 # GEMINI_API_KEY=your_key_here
-# ELEVENLABS_API_KEY=your_key_here
 
 # Start server
 uvicorn app.main:app --reload
@@ -73,11 +84,6 @@ Create `backend/.env` based on `backend/.env.example`:
 GEMINI_API_KEY=sk-xxxxxxxxxxxxx
 GEMINI_MODEL=gemini-1.5-pro  # or gemini-1.5-flash for faster responses
 
-# Required: ElevenLabs Text-to-Speech
-ELEVENLABS_API_KEY=sk_xxxxxxxxxxxxxxx
-ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM  # Default voice
-ELEVENLABS_MODEL=eleven_turbo_v2.5  # Fastest model
-
 # Application
 ENVIRONMENT=development
 CORS_ORIGINS=http://localhost:3000
@@ -101,7 +107,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 - **Frontend**: Next.js 15 + TypeScript + Tailwind CSS + KaTeX + Framer Motion
 - **Backend**: Python FastAPI with SSE streaming
 - **AI**: Google Gemini 1.5 Pro for lesson generation and tutoring
-- **Voice**: ElevenLabs for realistic text-to-speech
+- **Voice**: Gemini tts for realistic text-to-speech
 
 ## Key Files
 
@@ -110,7 +116,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | File | Purpose |
 |------|---------|
 | `app/services/ai_service.py` | Gemini API integration for lesson generation and chat |
-| `app/services/voice_service.py` | ElevenLabs integration for audio generation and caching |
+| `app/services/voice_service.py` | Gemini TTS integration for audio generation and caching |
 | `app/services/lesson_service.py` | Lesson streaming and voice integration |
 | `app/routers/audio.py` | Audio file serving endpoint |
 | `app/config.py` | Environment configuration with pydantic-settings |
@@ -200,10 +206,6 @@ Edit `backend/app/services/ai_service.py`:
 - Modify `_build_lesson_generation_prompt()` to change lesson generation
 - Modify `_build_chat_prompt()` to change tutor response style
 
-### Customizing Voice
-
-In `backend/.env`, change `ELEVENLABS_VOICE_ID` to any ElevenLabs voice ID. Available voices can be found in the [ElevenLabs documentation](https://elevenlabs.io/docs/api-reference/get-voices).
-
 ### Theme Customization
 
 Edit `frontend/src/app/globals.css`:
@@ -214,7 +216,7 @@ Edit `frontend/src/app/globals.css`:
 ## Performance
 
 - **Lesson Generation**: 10-30 seconds (Gemini API)
-- **Audio Generation**: 1-5 seconds per step (ElevenLabs)
+- **Audio Generation**: 1-5 seconds per step (Gemini TTS)
 - **Page Load**: < 2 seconds (Next.js optimization)
 - **Animation**: 60 FPS (Framer Motion)
 
@@ -240,10 +242,9 @@ Edit `frontend/src/app/globals.css`:
 ## Troubleshooting
 
 ### Audio not playing
-1. Check ELEVENLABS_API_KEY is valid
-2. Check browser allows audio autoplay (some require user interaction first)
-3. Check network tab for audio file requests
-4. Try toggling voice off/on
+1. Check browser allows audio autoplay (some require user interaction first)
+2. Check network tab for audio file requests
+3. Try toggling voice off/on
 
 ### Lesson generation timeout
 1. Check GEMINI_API_KEY is valid
