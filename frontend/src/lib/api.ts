@@ -57,6 +57,28 @@ export async function createSession(
   return res.json();
 }
 
+export async function createExamCramSession(data: {
+  problem_text: string;
+  subject_hint?: string;
+}): Promise<SessionResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/sessions/exam-cram`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  } catch {
+    throw new Error("Could not reach the server. Make sure the backend is running.");
+  }
+
+  if (!res.ok) {
+    const msg = await extractErrorMessage(res, `Server error (${res.status}). Please try again.`);
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 export async function sendChatMessage(
   sessionId: string,
   message: string,

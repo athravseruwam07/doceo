@@ -100,6 +100,37 @@ async def create_session_json(body: SessionCreate):
     )
 
 
+@router.post("/exam-cram", response_model=SessionResponse)
+async def create_exam_cram_session(body: SessionCreate):
+    """Create a lightweight session for exam-cram mode without AI lesson generation."""
+    subject = (body.subject_hint or "General STEM").strip() or "General STEM"
+    problem_text = (body.problem_text or "").strip() or "Exam Cram Session"
+
+    session = create_session(
+        title="Exam Cram Session",
+        subject=subject,
+        problem_text=problem_text,
+        step_count=0,
+    )
+
+    from app.models.session import update_session
+
+    update_session(session["session_id"], build_stage="exam_cram_ready")
+
+    return SessionResponse(
+        session_id=session["session_id"],
+        title=session["title"],
+        subject=session["subject"],
+        problem_text=session.get("problem_text"),
+        step_count=session["step_count"],
+        status=session["status"],
+        voice_status=session.get("voice_status"),
+        build_stage=session.get("build_stage"),
+        audio_status=session.get("audio_status"),
+        steps=session.get("steps"),
+    )
+
+
 @router.post("/upload", response_model=SessionResponse)
 async def create_session_upload(
     file: UploadFile = File(...),

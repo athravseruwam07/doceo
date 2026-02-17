@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { createExamCramPlanUpload, createSession } from "@/lib/api";
+import { createExamCramPlanUpload, createExamCramSession } from "@/lib/api";
 import { ExamCramResponse } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
@@ -37,7 +37,7 @@ export default function ExamCramPage() {
     setError(null);
 
     try {
-      const session = await createSession({
+      const session = await createExamCramSession({
         problem_text: examName.trim()
           ? `Exam Cram Session: ${examName.trim()}`
           : "Exam Cram Session",
