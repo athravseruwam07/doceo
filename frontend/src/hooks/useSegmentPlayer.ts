@@ -39,6 +39,7 @@ export function useSegmentPlayer(
   const slotsRef = useRef<VisualSlot[]>([]);
   const visualIdxRef = useRef(-1);
   const completedRef = useRef<AnimationEvent[]>([]);
+  const completedIdsRef = useRef<Set<string>>(new Set());
   const audioEndedRef = useRef(false);
 
   // React state for rendering
@@ -178,6 +179,13 @@ export function useSegmentPlayer(
     rafRef.current = requestAnimationFrame(tick);
   }
 
+  function appendCompletedVisual(visual: AnimationEvent) {
+    if (completedIdsRef.current.has(visual.id)) return;
+    completedIdsRef.current.add(visual.id);
+    completedRef.current = [...completedRef.current, visual];
+    setCompletedVisuals(completedRef.current);
+  }
+
   // ─── The rAF tick — reads ONLY refs, writes to React state ───
   function tick() {
     if (!runningRef.current) return;
@@ -203,8 +211,7 @@ export function useSegmentPlayer(
           // Complete previous visual
           if (vIdx >= 0 && vIdx < slots.length) {
             const prev = slots[vIdx].visual;
-            completedRef.current = [...completedRef.current, prev];
-            setCompletedVisuals(completedRef.current);
+            appendCompletedVisual(prev);
           }
           vIdx = i;
           visualIdxRef.current = i;
@@ -223,8 +230,7 @@ export function useSegmentPlayer(
         // Complete this visual if its slot is done
         if (segElapsed >= slot.endTime) {
           const vis = slot.visual;
-          completedRef.current = [...completedRef.current, vis];
-          setCompletedVisuals(completedRef.current);
+          appendCompletedVisual(vis);
           setActiveVisual(null);
           setActiveVisualProgress(0);
           visualIdxRef.current = vIdx + 1;
@@ -263,6 +269,7 @@ export function useSegmentPlayer(
     cancelAnimationFrame(rafRef.current);
     runningRef.current = false;
     completedRef.current = [];
+    completedIdsRef.current = new Set();
     setCompletedVisuals([]);
     setActiveVisual(null);
     setActiveVisualProgress(0);
@@ -315,12 +322,16 @@ export function useSegmentPlayer(
 
     // Build completed visuals from prior segments
     const completed: AnimationEvent[] = [];
+    const seen = new Set<string>();
     for (let i = 0; i < index; i++) {
       for (const v of segs[i].visuals) {
+        if (seen.has(v.id)) continue;
+        seen.add(v.id);
         completed.push(v);
       }
     }
     completedRef.current = completed;
+    completedIdsRef.current = seen;
     setCompletedVisuals(completed);
 
     beginSegment(index);

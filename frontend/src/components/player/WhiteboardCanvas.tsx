@@ -59,9 +59,12 @@ export default function WhiteboardCanvas({
       <div ref={boardRef} className="board-surface flex-1 overflow-y-auto">
         <div className="board-content">
           {/* Completed visuals grouped by step */}
-          {stepGroups.map((group) => (
-            <div key={`step-${group.stepNumber}`} className="board-step-group">
-              {group.stepNumber > 0 && stepGroups.indexOf(group) > 0 && (
+          {stepGroups.map((group, groupIndex) => (
+            <div
+              key={`step-${group.stepNumber}-${groupIndex}-${group.visuals[0]?.id ?? "empty"}`}
+              className="board-step-group"
+            >
+              {group.stepNumber > 0 && groupIndex > 0 && (
                 <div className="board-divider" />
               )}
               {group.visuals.map((event) => (
@@ -228,8 +231,12 @@ interface StepGroup {
 function groupByStep(visuals: AnimationEvent[]): StepGroup[] {
   const groups: StepGroup[] = [];
   let current: StepGroup | null = null;
+  const seen = new Set<string>();
 
   for (const v of visuals) {
+    if (seen.has(v.id)) continue;
+    seen.add(v.id);
+
     if (
       v.type === "annotate" ||
       v.type === "clear_section" ||
@@ -242,7 +249,10 @@ function groupByStep(visuals: AnimationEvent[]): StepGroup[] {
     ) {
       continue;
     }
-    const sn = v.payload.stepNumber ?? 0;
+    const sn =
+      typeof v.payload.stepNumber === "number"
+        ? v.payload.stepNumber
+        : current?.stepNumber ?? 0;
     if (!current || current.stepNumber !== sn) {
       current = { stepNumber: sn, visuals: [] };
       groups.push(current);

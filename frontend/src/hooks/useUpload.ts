@@ -11,7 +11,6 @@ interface SubmitOptions {
 export function useUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
-  const [subjectHint, setSubjectHint] = useState<string>("General STEM");
   const [courseId, setCourseId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +35,6 @@ export function useUpload() {
           const formData = new FormData();
           formData.append("file", file);
           if (text.trim()) formData.append("problem_text", text.trim());
-          if (subjectHint.trim()) formData.append("subject_hint", subjectHint.trim());
           if (courseId.trim()) formData.append("course_id", courseId.trim());
           if (useMicroLesson) {
             formData.append("include_voice", includeVoice ? "true" : "false");
@@ -48,7 +46,6 @@ export function useUpload() {
         } else {
           const payload = {
             problem_text: text.trim(),
-            subject_hint: subjectHint.trim() || undefined,
             course_id: courseId.trim() || undefined,
           };
           const res = useMicroLesson
@@ -68,13 +65,12 @@ export function useUpload() {
         setLoading(false);
       }
     },
-    [file, text, subjectHint, courseId]
+    [file, text, courseId]
   );
 
   const reset = useCallback(() => {
     setFile(null);
     setText("");
-    setSubjectHint("General STEM");
     setCourseId("");
     setError(null);
   }, []);
@@ -84,8 +80,6 @@ export function useUpload() {
     setFile,
     text,
     setText,
-    subjectHint,
-    setSubjectHint,
     courseId,
     setCourseId,
     loading,

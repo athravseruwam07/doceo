@@ -172,13 +172,30 @@ export function convertBackendEvent(raw: Record<string, unknown>): AnimationEven
 export function stepsToTimeline(steps: LessonStep[]): AnimationEvent[] {
   eventCounter = 0;
   const events: AnimationEvent[] = [];
+  const eventIdCounts = new Map<string, number>();
+
+  const ensureUniqueId = (event: AnimationEvent): AnimationEvent => {
+    const count = eventIdCounts.get(event.id) ?? 0;
+    if (count === 0) {
+      eventIdCounts.set(event.id, 1);
+      return event;
+    }
+    const nextCount = count + 1;
+    eventIdCounts.set(event.id, nextCount);
+    return {
+      ...event,
+      id: `${event.id}__dup${nextCount}`,
+    };
+  };
 
   for (const step of steps) {
     // Check if backend provided granular events
     if (step.events && step.events.length > 0) {
       // Use backend-choreographed events directly
       for (const rawEvent of step.events) {
-        const converted = convertBackendEvent(rawEvent as unknown as Record<string, unknown>);
+        const converted = ensureUniqueId(
+          convertBackendEvent(rawEvent as unknown as Record<string, unknown>)
+        );
         if (converted.type === "narrate") {
           console.log(`[Timeline] Narrate event ${converted.id}: audioUrl=${converted.payload.audioUrl || "NONE"}`);
         }

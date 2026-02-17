@@ -388,6 +388,15 @@ export default function PlayerShell({
     setQuickAskOpen(true);
   }, [player, voiceCancelSpeech]);
 
+  const handleOpenChat = useCallback(() => {
+    if (player.state.status === "playing") {
+      voiceCancelSpeech();
+      player.interrupt();
+    }
+    setQuickAskOpen(false);
+    setChatDrawerOpen(true);
+  }, [player, voiceCancelSpeech]);
+
   const handleContinue = useCallback(() => {
     setQuickAskOpen(false);
     setChatDrawerOpen(false);
@@ -509,12 +518,18 @@ export default function PlayerShell({
         <Link href="/" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
           Home
         </Link>
-        <Link href="/exam-cram" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
+        <Link href="/?view=exam-cram" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
           Cram
         </Link>
-        <Link href="/history" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
+        <Link href="/?view=history" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
           History
         </Link>
+        <button
+          onClick={handleOpenChat}
+          className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]"
+        >
+          Chat
+        </button>
       </div>
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
@@ -691,6 +706,7 @@ export default function PlayerShell({
         onSeek={handleSeek}
         onReplayChain={handleReplayCurrentChain}
         canReplayChain={Boolean(currentChainId)}
+        onOpenChat={handleOpenChat}
       />
     </div>
   );
