@@ -5,7 +5,6 @@ import logging
 from typing import AsyncGenerator
 
 from app.models.session import get_session, update_session
-from app.services.ai_service import analyze_problem
 from app.services.voice_service import get_voice_service
 from app.schemas.lesson import LessonStep, LessonComplete
 
@@ -229,6 +228,8 @@ async def create_lesson(session_id: str) -> None:
         return
 
     logger.info("[LessonService] No existing steps, generating with Gemini...")
+    from app.services.ai_service import analyze_problem
+
     result = await analyze_problem(
         problem_text=session.get("problem_text", ""),
         image_b64=session.get("image_b64"),
