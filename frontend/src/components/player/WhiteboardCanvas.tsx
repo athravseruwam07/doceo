@@ -249,7 +249,7 @@ function groupByStep(visuals: AnimationEvent[]): StepGroup[] {
     ) {
       continue;
     }
-    const sn =
+    const sn: number =
       typeof v.payload.stepNumber === "number"
         ? v.payload.stepNumber
         : current?.stepNumber ?? 0;

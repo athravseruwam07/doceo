@@ -1,15 +1,22 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.export import ExportResponse
 from app.models.session import get_session
+from app.auth import get_current_user_id
+from app.database import get_db
 
 router = APIRouter()
 
 
 @router.get("/{session_id}/export", response_model=ExportResponse)
-async def export_session(session_id: str):
+async def export_session(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Export a complete session including all steps and chat history."""
-    session = get_session(session_id)
+    session = await get_session(db, session_id, user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 

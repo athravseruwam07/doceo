@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import LessonLoadingScreen from "@/components/ui/LoadingOverlay";
@@ -39,7 +39,6 @@ function toSidebarMode(value: string | null): SidebarMode | null {
 
 export default function Home() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { toggleTheme } = useTheme();
   const {
     file,
@@ -84,11 +83,17 @@ export default function Home() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [loadingRunKey, setLoadingRunKey] = useState<string | null>(null);
-  const sidebarModeFromQuery = toSidebarMode(searchParams.get("view"));
 
   useEffect(() => {
-    setSidebarMode(sidebarModeFromQuery ?? "ask");
-  }, [sidebarModeFromQuery]);
+    const syncModeFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      setSidebarMode(toSidebarMode(params.get("view")) ?? "ask");
+    };
+
+    syncModeFromUrl();
+    window.addEventListener("popstate", syncModeFromUrl);
+    return () => window.removeEventListener("popstate", syncModeFromUrl);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -291,7 +296,7 @@ export default function Home() {
 
   const handleSidebarModeChange = (mode: SidebarMode) => {
     setSidebarMode(mode);
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(window.location.search);
     if (mode === "ask") {
       params.delete("view");
     } else {

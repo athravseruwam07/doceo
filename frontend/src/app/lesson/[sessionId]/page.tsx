@@ -172,7 +172,7 @@ export default function LessonPage({ params }: LessonPageProps) {
             {error}
           </p>
           <Link
-            href="/"
+            href="/app"
             className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-[var(--emerald)] rounded-lg hover:bg-[var(--emerald-dark)] transition-colors font-[family-name:var(--font-body)]"
           >
             Try again

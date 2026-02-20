@@ -2,10 +2,12 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import settings
 from app.routers import audio, chat, courses, exam_cram, export, lessons, sessions, voice
 from app.services.voice_service import get_voice_service
+from app.database import engine
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +45,15 @@ app.include_router(voice.router, prefix="/sessions", tags=["voice"])
 
 
 @app.on_event("startup")
-async def report_voice_health() -> None:
-    """Log active voice provider readiness once at startup."""
+async def startup() -> None:
+    """Warm critical integrations at startup."""
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("Database connectivity check succeeded")
+    except Exception as exc:
+        logger.warning("Database connectivity check failed: %s", exc)
+
     try:
         health = await get_voice_service().get_health(force=True)
         logger.info(
@@ -54,6 +63,12 @@ async def report_voice_health() -> None:
         )
     except Exception as exc:
         logger.warning("Voice health probe failed: %s", exc)
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    """Dispose database engine on shutdown."""
+    await engine.dispose()
 
 
 @app.get("/health")

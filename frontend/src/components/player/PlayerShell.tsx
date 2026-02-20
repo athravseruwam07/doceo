@@ -515,7 +515,7 @@ export default function PlayerShell({
   return (
     <div className="h-screen flex flex-col bg-[var(--cream)]">
       <div className="mx-3 mt-3 mb-0 z-30 inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--paper)]/90 px-2 py-1.5 backdrop-blur-sm shadow-[var(--shadow-sm)]">
-        <Link href="/" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
+        <Link href="/app" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
           Home
         </Link>
         <Link href="/?view=exam-cram" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
