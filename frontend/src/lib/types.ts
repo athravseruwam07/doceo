@@ -32,6 +32,15 @@ export interface SessionResponse {
   build_stage?: BuildStage;
   audio_status?: string;
   steps?: LessonStep[];
+  created_at?: string;
+  updated_at?: string;
+  course_id?: string;
+  course_label?: string;
+  confusion_score?: number;
+  confusion_level?: "low" | "medium" | "high";
+  adaptation_mode?: string;
+  lesson_type?: "full" | "micro";
+  include_voice?: boolean;
 }
 
 export interface SessionHistoryItem {
@@ -55,6 +64,11 @@ export interface ChatMessage {
   audio_url?: string;
   audio_duration?: number;
   events?: AnimationEvent[];
+  confusion_score?: number;
+  confusion_level?: "low" | "medium" | "high";
+  adaptation_mode?: string;
+  adaptation_reason?: string;
+  confusion_signals?: string[];
 }
 
 export interface ChatContextPayload {
@@ -62,6 +76,34 @@ export interface ChatContextPayload {
   currentStepTitle?: string;
   currentEventType?: string;
   activeNarration?: string;
+}
+
+export interface CourseSummary {
+  course_id: string;
+  label: string;
+  created_at: string;
+  material_count: number;
+}
+
+export interface CourseMaterial {
+  material_id: string;
+  filename: string;
+  content_type: string;
+  uploaded_at: string;
+  char_count: number;
+  chunk_count: number;
+  preview: string;
+}
+
+export interface CourseLesson {
+  session_id: string;
+  title: string;
+  subject: string;
+  status: string;
+  step_count: number;
+  lesson_type?: "full" | "micro";
+  created_at: string;
+  problem_preview: string;
 }
 
 export interface ExamCramMaterialSummary {

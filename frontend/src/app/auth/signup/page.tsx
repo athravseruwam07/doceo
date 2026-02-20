@@ -4,6 +4,23 @@ import { useEffect, useState } from "react";
 import { getProviders, signIn } from "next-auth/react";
 import Link from "next/link";
 
+function toSignUpErrorMessage(raw: string | null): string {
+  if (!raw) return "";
+  switch (raw) {
+    case "CredentialsSignin":
+      return "Account created, but sign-in failed. Please sign in manually.";
+    case "Configuration":
+      return "Authentication is misconfigured. Check auth environment variables.";
+    case "Callback":
+    case "CallbackRouteError":
+      return "Sign-in callback failed. Please sign in manually.";
+    case "AUTH_UNAVAILABLE":
+      return "Auth service is unavailable. Ensure database is running.";
+    default:
+      return raw.replace(/[_-]+/g, " ");
+  }
+}
+
 export default function SignUpPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -55,14 +72,23 @@ export default function SignUpPage() {
 
       // Auto sign in after registration
       const result = await signIn("credentials", {
-        email,
+        email: email.trim().toLowerCase(),
         password,
         redirect: false,
         callbackUrl: "/app",
       });
 
+      if (result?.error) {
+        setError(toSignUpErrorMessage(result.error));
+        setLoading(false);
+        return;
+      }
+
       if (result?.url) {
         window.location.href = result.url;
+      } else {
+        setError("Account created, but automatic sign-in failed. Please sign in.");
+        setLoading(false);
       }
     } catch {
       setError("Something went wrong. Please try again.");

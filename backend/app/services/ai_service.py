@@ -16,8 +16,16 @@ genai.configure(api_key=settings.gemini_api_key)
 logger = logging.getLogger(__name__)
 
 
+class AIServiceError(Exception):
+    """Raised when Gemini generation fails or returns malformed content."""
+
+
 async def analyze_problem(
-    problem_text: str, image_b64: str | None = None
+    problem_text: str,
+    image_b64: str | None = None,
+    subject_hint: str | None = None,
+    course_label: str | None = None,
+    course_snippets: list[dict[str, Any]] | None = None,
 ) -> dict:
     """Analyze a problem and return lesson plan with granular teaching events.
 
@@ -28,45 +36,56 @@ async def analyze_problem(
     Returns:
         Dict with title, subject, and steps array (each step has events)
     """
-    prompt = _build_lesson_generation_prompt(problem_text, image_b64)
-    primary_model_name = settings.gemini_model
-
-    request_payload: Any = prompt
-    if image_b64:
-        import base64
-        from io import BytesIO
-
-        from PIL import Image
-
-        try:
-            image_data = base64.b64decode(image_b64)
-            image = Image.open(BytesIO(image_data))
-        except Exception as exc:
-            raise ValueError("Uploaded image could not be decoded.") from exc
-
-        # Convert to RGB (strip alpha) and resize to keep inference reliable.
-        image = image.convert("RGB")
-        image.thumbnail((1024, 1024))
-        request_payload = [prompt, image]
-
-    result = await _generate_and_parse_lesson(
-        model_name=primary_model_name,
-        payload=request_payload,
-    )
-
-    if _should_use_quality_fallback(primary_model_name) and not _lesson_quality_sufficient(result):
-        quality_model_name = settings.gemini_quality_model
-        logger.warning(
-            "Primary Gemini model (%s) produced low-quality lesson structure; retrying with %s.",
-            primary_model_name,
-            quality_model_name,
+    try:
+        prompt = _build_lesson_generation_prompt(
+            problem_text=problem_text,
+            image_b64=image_b64,
+            subject_hint=subject_hint,
+            course_label=course_label,
+            course_snippets=course_snippets or [],
         )
+        primary_model_name = settings.gemini_model
+
+        request_payload: Any = prompt
+        if image_b64:
+            import base64
+            from io import BytesIO
+
+            from PIL import Image
+
+            try:
+                image_data = base64.b64decode(image_b64)
+                image = Image.open(BytesIO(image_data))
+            except Exception as exc:
+                raise AIServiceError("Uploaded image could not be decoded.") from exc
+
+            # Convert to RGB (strip alpha) and resize to keep inference reliable.
+            image = image.convert("RGB")
+            image.thumbnail((1024, 1024))
+            request_payload = [prompt, image]
+
         result = await _generate_and_parse_lesson(
-            model_name=quality_model_name,
+            model_name=primary_model_name,
             payload=request_payload,
         )
 
-    return result
+        if _should_use_quality_fallback(primary_model_name) and not _lesson_quality_sufficient(result):
+            quality_model_name = settings.gemini_quality_model
+            logger.warning(
+                "Primary Gemini model (%s) produced low-quality lesson structure; retrying with %s.",
+                primary_model_name,
+                quality_model_name,
+            )
+            result = await _generate_and_parse_lesson(
+                model_name=quality_model_name,
+                payload=request_payload,
+            )
+
+        return result
+    except AIServiceError:
+        raise
+    except Exception as exc:
+        raise AIServiceError(f"Gemini lesson generation failed: {exc}") from exc
 
 
 def _is_retryable_gemini_error(exc: Exception) -> bool:
@@ -125,29 +144,93 @@ async def _generate_with_retries(
 
 
 async def generate_chat_response(
-    problem_context: str, chat_history: list, question: str
+    problem_context: str,
+    chat_history: list,
+    question: str,
+    course_label: str | None = None,
+    course_snippets: list[dict[str, Any]] | None = None,
+    adaptation: dict[str, Any] | None = None,
 ) -> dict:
     """Generate a tutor response to a student question."""
-    prompt = _build_chat_prompt(problem_context, chat_history, question)
-    primary_model_name = settings.gemini_model
-    result = await _generate_and_parse_chat(
-        model_name=primary_model_name,
-        prompt=prompt,
-    )
-
-    if _should_use_quality_fallback(primary_model_name) and _chat_needs_quality_fallback(result):
-        quality_model_name = settings.gemini_quality_model
-        logger.warning(
-            "Primary Gemini model (%s) produced weak chat response; retrying with %s.",
-            primary_model_name,
-            quality_model_name,
+    try:
+        prompt = _build_chat_prompt(
+            problem_context=problem_context,
+            chat_history=chat_history,
+            question=question,
+            course_label=course_label,
+            course_snippets=course_snippets or [],
+            adaptation=adaptation,
         )
+        primary_model_name = settings.gemini_model
         result = await _generate_and_parse_chat(
-            model_name=quality_model_name,
+            model_name=primary_model_name,
             prompt=prompt,
         )
 
-    return result
+        if _should_use_quality_fallback(primary_model_name) and _chat_needs_quality_fallback(result):
+            quality_model_name = settings.gemini_quality_model
+            logger.warning(
+                "Primary Gemini model (%s) produced weak chat response; retrying with %s.",
+                primary_model_name,
+                quality_model_name,
+            )
+            result = await _generate_and_parse_chat(
+                model_name=quality_model_name,
+                prompt=prompt,
+            )
+
+        return result
+    except AIServiceError:
+        raise
+    except Exception as exc:
+        raise AIServiceError(f"Gemini chat generation failed: {exc}") from exc
+
+
+async def generate_micro_lesson(
+    problem_text: str,
+    image_b64: str | None = None,
+    subject_hint: str | None = None,
+    course_label: str | None = None,
+    course_snippets: list[dict[str, Any]] | None = None,
+) -> dict:
+    """Generate a short micro-lesson (1-3 steps) for quick reinforcement."""
+    try:
+        prompt = _build_micro_lesson_prompt(
+            problem_text=problem_text,
+            image_b64=image_b64,
+            subject_hint=subject_hint,
+            course_label=course_label,
+            course_snippets=course_snippets or [],
+        )
+        primary_model_name = settings.gemini_model
+
+        request_payload: Any = prompt
+        if image_b64:
+            import base64
+            from io import BytesIO
+
+            from PIL import Image
+
+            try:
+                image_data = base64.b64decode(image_b64)
+                image = Image.open(BytesIO(image_data))
+            except Exception as exc:
+                raise AIServiceError("Uploaded image could not be decoded.") from exc
+
+            image = image.convert("RGB")
+            image.thumbnail((1024, 1024))
+            request_payload = [prompt, image]
+
+        result = await _generate_and_parse_micro(
+            model_name=primary_model_name,
+            payload=request_payload,
+        )
+
+        return result
+    except AIServiceError:
+        raise
+    except Exception as exc:
+        raise AIServiceError(f"Gemini micro-lesson generation failed: {exc}") from exc
 
 
 def _should_use_quality_fallback(primary_model_name: str) -> bool:
@@ -231,16 +314,52 @@ async def _generate_and_parse_chat(model_name: str, prompt: str) -> dict:
     return _parse_chat_response(response.text)
 
 
-def _build_lesson_generation_prompt(problem_text: str, image_b64: str | None) -> str:
+async def _generate_and_parse_micro(model_name: str, payload: Any) -> dict:
+    model = genai.GenerativeModel(model_name)
+    response = await _generate_with_retries(model, payload, model_name=model_name)
+    return _parse_micro_lesson_response(response.text)
+
+
+def _format_course_context(
+    course_label: str | None, course_snippets: list[dict[str, Any]]
+) -> str:
+    if not course_label:
+        return ""
+
+    header = [f"Preferred course context: {course_label}"]
+    if not course_snippets:
+        header.append(
+            "No extracted notes snippets matched this query. Use standard instruction."
+        )
+        return "\n".join(header)
+
+    header.append("Use these note excerpts as primary context:")
+    for index, snippet in enumerate(course_snippets, start=1):
+        filename = snippet.get("filename", "notes")
+        text = str(snippet.get("text", "")).replace("\n", " ").strip()
+        header.append(f"{index}. [{filename}] {text[:500]}")
+    return "\n".join(header)
+
+
+def _build_lesson_generation_prompt(
+    problem_text: str,
+    image_b64: str | None,
+    subject_hint: str | None = None,
+    course_label: str | None = None,
+    course_snippets: list[dict[str, Any]] | None = None,
+) -> str:
     """Build prompt that asks Gemini for granular whiteboard teaching choreography.
 
     Instead of asking for text blobs, we ask Gemini to script each step as a
     sequence of teaching actions — exactly what a professor would do at a
     whiteboard: speak, write an equation, speak again, highlight something, etc.
     """
+    subject_line = subject_hint.strip() if subject_hint else "None provided"
+    course_context = _format_course_context(course_label, course_snippets or [])
     return f"""You are an expert STEM professor giving a live whiteboard lesson. You TEACH by writing on a FIXED classroom whiteboard while narrating aloud.
 
 PROBLEM: {problem_text}
+Subject hint: {subject_line}
 
 Create a step-by-step lesson. For EACH step, script teaching actions (events) with clean classroom rhythm.
 The board does NOT scroll like a document. Use semantic lanes (Given/Derivation/Scratch/Final) and scene templates.
@@ -328,20 +447,134 @@ EXAMPLE:
   ]
 }}
 
-Create 4-6 steps with rich event choreography. Make it feel like a clean classroom whiteboard lesson."""
+Create 4-6 steps with rich event choreography. Make it feel like a clean classroom whiteboard lesson.
+
+{course_context}"""
+
+
+def _build_micro_lesson_prompt(
+    problem_text: str,
+    image_b64: str | None,
+    subject_hint: str | None,
+    course_label: str | None,
+    course_snippets: list[dict[str, Any]],
+) -> str:
+    """Build prompt for concise micro-lesson generation."""
+    subject_line = subject_hint.strip() if subject_hint else "None provided"
+    course_context = _format_course_context(course_label, course_snippets)
+    return f"""You are an expert STEM tutor creating a short micro-lesson.
+
+Task:
+- Build a concise and focused lesson for this student request.
+- Prioritize conceptual clarity over breadth.
+- Keep it short enough for quick revision.
+
+Problem or concept request: {problem_text}
+Subject hint: {subject_line}
+
+Return valid JSON (no markdown, no code blocks) with this exact structure:
+{{
+  "title": "Clear micro-lesson title",
+  "subject": "Subject area",
+  "introduction": "1-2 sentence setup",
+  "steps": [
+    {{
+      "step_number": 1,
+      "title": "Short step title",
+      "content": "Focused explanation for this step with optional LaTeX like $x^2$",
+      "key_insight": "Single key takeaway",
+      "narration": "Natural spoken version of this step",
+      "math_blocks": [
+        {{
+          "latex": "x^2 + 3x + 2 = 0",
+          "display": true,
+          "annotation": "What this expression represents"
+        }}
+      ]
+    }}
+  ],
+  "summary": "Short recap",
+  "quick_check": "One short concept-check question"
+}}
+
+Requirements:
+- Generate 1 to 3 steps only.
+- Keep each step concise and high-signal.
+- Include at least one worked expression or equation when relevant.
+- Use double backslashes in LaTeX (\\\\).
+- If course context is provided, align notation, wording, and sequencing with those notes.
+- If notes are missing coverage, provide a standard fallback explanation and keep it brief.
+
+{course_context}"""
+
+
+def _format_adaptation_context(adaptation: dict[str, Any] | None) -> str:
+    if not isinstance(adaptation, dict):
+        return ""
+
+    level = str(adaptation.get("level", "low")).strip().lower()
+    mode = str(adaptation.get("mode", "standard")).strip().lower()
+    reason = str(adaptation.get("reason", "")).strip()
+    signals = adaptation.get("signals", [])
+    signal_text = ", ".join(signal for signal in signals if isinstance(signal, str))[:180]
+    pacing = adaptation.get("recommended_pacing", "normal")
+    depth = adaptation.get("recommended_depth", "standard")
+
+    if level == "high":
+        style_rules = (
+            "- Slow pacing significantly and explain one micro-step at a time.\n"
+            "- Begin with a quick prerequisite refresher before solving.\n"
+            "- Include one analogy and one short concept check question."
+        )
+    elif level == "medium":
+        style_rules = (
+            "- Use moderate pacing with clear scaffolding.\n"
+            "- Break each idea into smaller parts and confirm transitions.\n"
+            "- Add one worked mini-example before moving on."
+        )
+    else:
+        style_rules = (
+            "- Keep normal pacing and concise explanations.\n"
+            "- Only add extra scaffolding if the student asks for it."
+        )
+
+    return (
+        "\nAdaptive tutoring policy (must follow):\n"
+        f"- Confusion level: {level}\n"
+        f"- Adaptation mode: {mode}\n"
+        f"- Recommended pacing: {pacing}\n"
+        f"- Recommended depth: {depth}\n"
+        f"- Detection reason: {reason or 'n/a'}\n"
+        f"- Signals: {signal_text or 'none'}\n"
+        f"{style_rules}\n"
+    )
 
 
 def _build_chat_prompt(
-    problem_context: str, chat_history: list, question: str
+    problem_context: str,
+    chat_history: list,
+    question: str,
+    course_label: str | None = None,
+    course_snippets: list[dict[str, Any]] | None = None,
+    adaptation: dict[str, Any] | None = None,
 ) -> str:
     """Build prompt for chat response with optional mini whiteboard events."""
     history_text = ""
     for msg in chat_history:
         history_text += f"\n{msg.get('role', 'Unknown')}: {msg.get('message', '')}"
 
+    course_context = _format_course_context(course_label, course_snippets or [])
+    source_hint = (
+        "Prioritize the student's uploaded course notes for this response."
+        if course_label
+        else "No uploaded course notes were provided."
+    )
+    adaptation_context = _format_adaptation_context(adaptation)
+
     return f"""You are a helpful math and science tutor. Answer the student's question clearly.
 
 Original Problem: {problem_context}
+Source preference: {source_hint}
 
 Previous conversation:{history_text}
 
@@ -372,8 +605,13 @@ Guidelines:
 - Address the student's specific question
 - Use all double backslashes in LaTeX (\\\\)
 - Keep narration conversational
+- If course notes context is provided, match that language and sequencing.
+- If notes do not cover part of the answer, state that and provide a fallback explanation.
 - Include "events" only when a short whiteboard visual is helpful
-- Keep events concise: at most 1 narrate + 4 visual/annotation events"""
+- Keep events concise: at most 1 narrate + 4 visual/annotation events
+
+{adaptation_context}
+{course_context}"""
 
 
 def _generate_event_id(step_number: int, event_index: int) -> str:
@@ -1267,6 +1505,40 @@ def _parse_lesson_response(response_text: str) -> dict:
         ) from e
     except Exception as e:
         raise ValueError(f"Failed to parse Gemini lesson response: {e}") from e
+
+
+def _parse_micro_lesson_response(response_text: str) -> dict:
+    data = _parse_lesson_response(response_text)
+    raw_steps = data.get("steps", [])
+    if not isinstance(raw_steps, list) or not raw_steps:
+        raise ValueError("Gemini returned an invalid micro-lesson response.")
+
+    compact_steps: list[dict[str, Any]] = []
+    for index, step in enumerate(raw_steps[:3], start=1):
+        if not isinstance(step, dict):
+            continue
+        compact_step = dict(step)
+        compact_step["step_number"] = index
+        compact_step["title"] = (
+            str(compact_step.get("title", f"Step {index}")).strip() or f"Step {index}"
+        )
+        compact_step["content"] = str(compact_step.get("content", "")).strip()
+        compact_step["narration"] = (
+            str(compact_step.get("narration", "")).strip()
+            or compact_step["content"]
+            or compact_step["title"]
+        )
+        if not isinstance(compact_step.get("math_blocks"), list):
+            compact_step["math_blocks"] = []
+        compact_steps.append(compact_step)
+
+    if not compact_steps:
+        raise ValueError("Gemini returned empty micro-lesson steps.")
+
+    data["steps"] = compact_steps
+    if "summary" not in data or not str(data.get("summary", "")).strip():
+        data["summary"] = "Quick recap complete. Ask a follow-up to go deeper."
+    return data
 
 
 def _generate_events_from_content(step: dict) -> list[dict]:

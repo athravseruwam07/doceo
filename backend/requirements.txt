@@ -7,6 +7,7 @@ pydantic-settings==2.6.1
 python-dotenv==1.0.1
 google-generativeai==0.8.3
 pillow==11.0.0
+pypdf==5.1.0
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 python-jose[cryptography]==3.3.0

@@ -14,6 +14,7 @@ interface PlayerControlsProps {
   onSeek?: (segmentIndex: number) => void;
   onReplayChain?: () => void;
   canReplayChain?: boolean;
+  onOpenChat?: () => void;
 }
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
@@ -37,6 +38,7 @@ export default function PlayerControls({
   onSeek,
   onReplayChain,
   canReplayChain = false,
+  onOpenChat,
 }: PlayerControlsProps) {
   const isPlaying = state.status === "playing";
   const isPaused = state.status === "paused";
@@ -147,18 +149,36 @@ export default function PlayerControls({
         </button>
       )}
 
-      {/* Ask a question button */}
-      {!isComplete && (
-        <div className="flex items-center gap-2">
-          {onReplayChain && (
-            <button
-              onClick={onReplayChain}
-              disabled={!canReplayChain}
-              className="px-2.5 py-1.5 text-[12px] rounded-[var(--radius-md)] border border-[var(--border)] text-[var(--ink-secondary)] hover:bg-[var(--cream-dark)] disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer font-[family-name:var(--font-body)]"
-            >
-              Replay chain
-            </button>
-          )}
+      {/* Ask actions */}
+      <div className="flex items-center gap-2">
+        {!isComplete && onReplayChain && (
+          <button
+            onClick={onReplayChain}
+            disabled={!canReplayChain}
+            className="px-2.5 py-1.5 text-[12px] rounded-[var(--radius-md)] border border-[var(--border)] text-[var(--ink-secondary)] hover:bg-[var(--cream-dark)] disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer font-[family-name:var(--font-body)]"
+          >
+            Replay chain
+          </button>
+        )}
+        {isComplete ? (
+          <button
+            onClick={onOpenChat}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-white bg-[var(--emerald)] rounded-[var(--radius-md)] hover:bg-[var(--emerald-light)] transition-colors cursor-pointer font-[family-name:var(--font-body)]"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M8 1C4.134 1 1 3.91 1 7.5c0 1.47.527 2.83 1.414 3.92L1.5 14.5l3.248-1.2A7.36 7.36 0 008 14c3.866 0 7-2.91 7-6.5S11.866 1 8 1z"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+              />
+              <circle cx="5" cy="7.5" r="0.75" fill="currentColor" />
+              <circle cx="8" cy="7.5" r="0.75" fill="currentColor" />
+              <circle cx="11" cy="7.5" r="0.75" fill="currentColor" />
+            </svg>
+            Ask follow-up
+          </button>
+        ) : (
           <button
             onClick={onInterrupt}
             className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-white bg-[var(--emerald)] rounded-[var(--radius-md)] hover:bg-[var(--emerald-light)] transition-colors cursor-pointer font-[family-name:var(--font-body)]"
@@ -176,8 +196,8 @@ export default function PlayerControls({
             </svg>
             Quick ask
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

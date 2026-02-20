@@ -22,7 +22,7 @@ async def stream_lesson(
         raise HTTPException(status_code=404, detail="Session not found")
 
     async def event_generator():
-        async for item in stream_lesson_steps(session_id, db):
+        async for item in stream_lesson_steps(session_id):
             yield {
                 "event": item["event"],
                 "data": item["data"],

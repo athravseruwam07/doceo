@@ -51,6 +51,7 @@ audio_cache/
 # Generated files
 *.mp3
 *.wav
+backend/data/*.json
 
 # OS
 Thumbs.db

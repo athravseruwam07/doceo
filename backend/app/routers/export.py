@@ -26,6 +26,9 @@ async def export_session(
         subject=session["subject"],
         steps=session.get("steps", []),
         chat_log=session.get("chat_log", []),
+        lesson_type=session.get("lesson_type"),
+        include_voice=session.get("include_voice"),
+        confusion_state=session.get("confusion_state"),
         exam_materials=session.get("exam_materials", []),
         exam_cram=session.get("exam_cram"),
     )

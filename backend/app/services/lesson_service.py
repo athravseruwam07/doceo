@@ -4,9 +4,8 @@ import json
 import logging
 from typing import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.models.session import get_session, update_session
+from app.services.ai_service import analyze_problem
 from app.services.voice_service import get_voice_service
 from app.schemas.lesson import LessonStep, LessonComplete
 
@@ -38,11 +37,23 @@ async def _generate_audio_throttled(
 
 
 async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], str]:
-    """Generate narration audio for every narrate event and attach URLs."""
+    """Generate narration audio for every narrate event and attach URLs.
+
+    Returns:
+        tuple: (steps_with_audio, voice_status)
+
+    The status is one of:
+        - "ok"
+        - "missing_tts_permission"
+        - "unauthorized"
+        - "rate_limited"
+        - "unknown"
+    """
     voice_service = get_voice_service()
     semaphore = asyncio.Semaphore(_TTS_CONCURRENCY)
 
-    all_narrate_refs = []
+    # Collect ALL narrate events across ALL steps for batch processing
+    all_narrate_refs = []  # list of (step_index, event_index, original_duration)
     all_narrate_tasks = []
 
     for step_idx, step in enumerate(all_steps):
@@ -56,9 +67,11 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], s
                         _generate_audio_throttled(semaphore, voice_service, text)
                     )
 
+    # Generate all audio with throttled concurrency
     print(f"[LessonService] Generating audio for {len(all_narrate_tasks)} narrate events (max {_TTS_CONCURRENCY} concurrent)...")
     audio_results = await asyncio.gather(*all_narrate_tasks, return_exceptions=True)
 
+    # Attach audio to events
     success_count = 0
     failure_codes: dict[str, int] = {}
     for (step_idx, ev_idx, original_duration), audio_result in zip(all_narrate_refs, audio_results):
@@ -66,6 +79,7 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], s
 
         if isinstance(audio_result, Exception):
             print(f"[LessonService] Audio generation failed for step {step_idx} event {ev_idx}: {audio_result}")
+            # Keep original estimated duration — don't set to 0
             failure_codes["exception"] = failure_codes.get("exception", 0) + 1
             continue
 
@@ -74,21 +88,30 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], s
         error_code = audio_result.get("error_code")
 
         if audio_url and audio_duration > 0:
-            event["duration"] = audio_duration * 1000
+            # Replace with real audio duration
+            event["duration"] = audio_duration * 1000  # seconds → ms
             event["payload"]["audio_url"] = audio_url
             event["payload"]["audio_duration"] = audio_duration
             print(f"[LessonService] Step {step_idx} event {ev_idx}: audio_url={audio_url} duration={audio_duration:.1f}s")
             success_count += 1
         else:
+            # Audio generation returned no URL — keep original estimated duration
             print(f"[LessonService] No audio URL for step {step_idx} event {ev_idx}, keeping estimated duration")
             if isinstance(error_code, str):
                 failure_codes[error_code] = failure_codes.get(error_code, 0) + 1
 
     if all_narrate_refs and success_count == 0:
-        print(f"[LessonService] WARNING: Voice provider did not return audio for any narrate events. failure_codes={failure_codes}")
+        print(
+            "[LessonService] WARNING: Voice provider did not return audio for any narrate events. "
+            f"failure_codes={failure_codes}"
+        )
         if failure_codes.get("missing_tts_permission"):
-            print("[LessonService] ACTION REQUIRED: Enable text_to_speech permission on the active voice provider key, then restart backend.")
+            print(
+                "[LessonService] ACTION REQUIRED: Enable text_to_speech permission on the active voice provider key, "
+                "then restart backend."
+            )
 
+    # Set step-level audio fields for backward compat
     for step in all_steps:
         events = step.get("events", [])
         first_narrate_audio = None
@@ -120,10 +143,13 @@ async def _enrich_steps_with_audio(all_steps: list[dict]) -> tuple[list[dict], s
     return all_steps, voice_status
 
 
-async def _generate_audio_in_background(session_id: str, db: AsyncSession) -> None:
+async def _generate_audio_in_background(session_id: str) -> None:
     """Generate lesson narration audio asynchronously without blocking streaming."""
-    session = await get_session(db, session_id)
+    session = get_session(session_id)
     if session is None:
+        return
+    if not bool(session.get("include_voice", True)):
+        update_session(session_id, audio_status="disabled")
         return
 
     if session.get("audio_status") == "in_progress":
@@ -134,18 +160,19 @@ async def _generate_audio_in_background(session_id: str, db: AsyncSession) -> No
         return
 
     if _steps_have_audio(steps):
-        await update_session(
-            db, session_id,
+        update_session(
+            session_id,
             audio_status="complete",
             voice_status=session.get("voice_status", "ok"),
         )
         return
 
-    await update_session(db, session_id, audio_status="in_progress", build_stage="voice_generation")
+    update_session(session_id, audio_status="in_progress", build_stage="voice_generation")
     try:
+        # Work on a deep copy to avoid mutating objects while UI is streaming them.
         steps_with_audio, voice_status = await _enrich_steps_with_audio(copy.deepcopy(steps))
-        await update_session(
-            db, session_id,
+        update_session(
+            session_id,
             steps=steps_with_audio,
             step_count=len(steps_with_audio),
             audio_status="complete",
@@ -154,53 +181,73 @@ async def _generate_audio_in_background(session_id: str, db: AsyncSession) -> No
         )
     except Exception:
         logger.exception("Background audio generation failed for session %s", session_id)
-        await update_session(
-            db, session_id,
+        update_session(
+            session_id,
             audio_status="failed",
             voice_status="unknown",
             build_stage="stream_ready",
         )
 
 
-def _schedule_background_audio_generation(session_id: str, db: AsyncSession) -> None:
+def _schedule_background_audio_generation(session_id: str) -> None:
     """Queue background audio generation if needed."""
-    # NOTE: We cannot easily run this in background with an async db session
-    # that's request-scoped. For now, audio generation happens inline during streaming.
-    pass
-
-
-async def create_lesson(session_id: str, db: AsyncSession) -> None:
-    """Analyze the problem and store steps quickly without blocking on audio."""
-    session = await get_session(db, session_id)
+    session = get_session(session_id)
     if session is None:
         return
+    if not bool(session.get("include_voice", True)):
+        update_session(session_id, audio_status="disabled")
+        return
 
+    status = session.get("audio_status")
+    if status in {"queued", "in_progress", "complete"}:
+        return
+
+    steps = session.get("steps", [])
+    if not steps or _steps_have_audio(steps):
+        return
+
+    update_session(session_id, audio_status="queued")
+    asyncio.create_task(_generate_audio_in_background(session_id))
+
+
+async def create_lesson(session_id: str) -> None:
+    """Analyze the problem and store steps quickly without blocking on audio."""
+    session = get_session(session_id)
+    if session is None:
+        return
+    include_voice = bool(session.get("include_voice", True))
+
+    # Reuse existing steps if the session creation endpoint already generated them
     existing_steps = session.get("steps", [])
     if existing_steps and len(existing_steps) > 0:
         logger.info("[LessonService] Reusing %s existing steps", len(existing_steps))
-        await update_session(
-            db, session_id,
+        update_session(
+            session_id,
             title=session.get("title", "Lesson"),
             subject=session.get("subject", "STEM"),
             steps=existing_steps,
             step_count=len(existing_steps),
             status="streaming",
             build_stage="stream_ready",
-            audio_status="complete" if _steps_have_audio(existing_steps) else "pending",
+            audio_status=(
+                "disabled"
+                if not include_voice
+                else ("complete" if _steps_have_audio(existing_steps) else "pending")
+            ),
         )
+        if include_voice and not _steps_have_audio(existing_steps):
+            _schedule_background_audio_generation(session_id)
         return
 
     logger.info("[LessonService] No existing steps, generating with Gemini...")
-    from app.services.ai_service import analyze_problem
-
     result = await analyze_problem(
         problem_text=session.get("problem_text", ""),
         image_b64=session.get("image_b64"),
     )
 
     all_steps = result.get("steps", [])
-    await update_session(
-        db, session_id,
+    update_session(
+        session_id,
         title=result["title"],
         subject=result["subject"],
         steps=all_steps,
@@ -208,42 +255,65 @@ async def create_lesson(session_id: str, db: AsyncSession) -> None:
         status="streaming",
         voice_status=session.get("voice_status", "unknown"),
         build_stage="stream_ready",
-        audio_status="pending",
+        audio_status="pending" if include_voice else "disabled",
     )
+    if include_voice:
+        _schedule_background_audio_generation(session_id)
 
 
-async def stream_lesson_steps(session_id: str, db: AsyncSession) -> AsyncGenerator[dict, None]:
+async def stream_lesson_steps(session_id: str) -> AsyncGenerator[dict, None]:
     """Stream lesson steps with embedded animation events."""
-    session = await get_session(db, session_id)
+    session = get_session(session_id)
     if session is None:
         return
 
     steps = session.get("steps", [])
+    include_voice = bool(session.get("include_voice", True))
 
+    # Send an immediate status event so SSE connection opens right away.
     yield {
         "event": "status",
         "data": json.dumps({"state": "connected"}),
     }
 
+    # Generate lesson structure first if needed (non-audio path for fast startup)
     if not steps:
         logger.info("[LessonService] Generating lesson steps for session %s", session_id)
-        await create_lesson(session_id, db)
-        session = await get_session(db, session_id)
+        lesson_task = asyncio.create_task(create_lesson(session_id))
+        elapsed_seconds = 0
+
+        while not lesson_task.done():
+            await asyncio.sleep(2.0)
+            elapsed_seconds += 2
+            yield {
+                "event": "status",
+                "data": json.dumps(
+                    {
+                        "state": "generating",
+                        "elapsed_seconds": elapsed_seconds,
+                    }
+                ),
+            }
+
+        # Propagate exceptions from lesson generation if they occurred.
+        await lesson_task
+        session = get_session(session_id)
         if session is None:
             return
         steps = session.get("steps", [])
 
     # Ensure streamed steps have narration audio when possible.
-    if steps and not _steps_have_audio(steps):
-        await update_session(db, session_id, audio_status="in_progress", build_stage="voice_generation")
+    # This prevents a "silent lesson" where background audio finishes after SSE already emitted steps.
+    if include_voice and steps and not _steps_have_audio(steps):
+        update_session(session_id, audio_status="in_progress", build_stage="voice_generation")
         try:
             steps_with_audio, voice_status = await asyncio.wait_for(
                 _enrich_steps_with_audio(copy.deepcopy(steps)),
                 timeout=_INLINE_TTS_TIMEOUT_SECONDS,
             )
             steps = steps_with_audio
-            await update_session(
-                db, session_id,
+            update_session(
+                session_id,
                 steps=steps_with_audio,
                 step_count=len(steps_with_audio),
                 audio_status="complete" if _steps_have_audio(steps_with_audio) else "failed",
@@ -252,32 +322,34 @@ async def stream_lesson_steps(session_id: str, db: AsyncSession) -> AsyncGenerat
             )
         except asyncio.TimeoutError:
             logger.warning(
-                "Inline audio generation timed out after %ss for session %s; continuing stream",
+                "Inline audio generation timed out after %ss for session %s; continuing stream and finishing audio in background",
                 _INLINE_TTS_TIMEOUT_SECONDS,
                 session_id,
             )
-            await update_session(
-                db, session_id,
+            update_session(
+                session_id,
                 audio_status="pending",
                 build_stage="stream_ready",
             )
+            _schedule_background_audio_generation(session_id)
         except Exception:
             logger.exception("Inline audio generation failed for session %s", session_id)
-            await update_session(
-                db, session_id,
+            update_session(
+                session_id,
                 audio_status="pending",
                 voice_status="unknown",
                 build_stage="stream_ready",
             )
+            _schedule_background_audio_generation(session_id)
 
-    await update_session(db, session_id, status="streaming", build_stage="streaming")
+    update_session(session_id, status="streaming", build_stage="streaming")
 
     for step_dict in steps:
         await asyncio.sleep(0.3)
         step = LessonStep(**step_dict)
         yield {"event": "step", "data": step.model_dump_json()}
 
-    await update_session(db, session_id, status="complete", build_stage="complete")
+    update_session(session_id, status="complete", build_stage="complete")
 
     complete = LessonComplete(
         message="Lesson complete! Feel free to ask questions.",

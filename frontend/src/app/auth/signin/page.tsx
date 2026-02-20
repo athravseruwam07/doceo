@@ -4,6 +4,25 @@ import { useEffect, useState } from "react";
 import { getProviders, signIn } from "next-auth/react";
 import Link from "next/link";
 
+function toSignInErrorMessage(raw: string | null): string {
+  if (!raw) return "";
+  switch (raw) {
+    case "CredentialsSignin":
+      return "Invalid email or password.";
+    case "AccessDenied":
+      return "Access denied for this account.";
+    case "Configuration":
+      return "Authentication is misconfigured. Check auth environment variables.";
+    case "Callback":
+    case "CallbackRouteError":
+      return "Sign-in failed during callback. Please try again.";
+    case "AUTH_UNAVAILABLE":
+      return "Auth service is unavailable. Ensure database is running.";
+    default:
+      return raw.replace(/[_-]+/g, " ");
+  }
+}
+
 export default function SignInPage() {
   const [callbackUrl] = useState(() => {
     if (typeof window === "undefined") return "/app";
@@ -15,9 +34,7 @@ export default function SignInPage() {
   const [error, setError] = useState(() => {
     if (typeof window === "undefined") return "";
     const params = new URLSearchParams(window.location.search);
-    return params.get("error") === "CredentialsSignin"
-      ? "Invalid email or password."
-      : "";
+    return toSignInErrorMessage(params.get("error"));
   });
   const [loading, setLoading] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
@@ -39,17 +56,20 @@ export default function SignInPage() {
     setLoading(true);
 
     const result = await signIn("credentials", {
-      email,
+      email: email.trim().toLowerCase(),
       password,
       redirect: false,
       callbackUrl,
     });
 
     if (result?.error) {
-      setError("Invalid email or password.");
+      setError(toSignInErrorMessage(result.error));
       setLoading(false);
     } else if (result?.url) {
       window.location.href = result.url;
+    } else {
+      setError("Could not complete sign-in. Please try again.");
+      setLoading(false);
     }
   };
 

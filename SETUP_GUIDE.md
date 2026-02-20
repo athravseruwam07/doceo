@@ -73,7 +73,15 @@ npm run dev
 
 ✅ Frontend running at http://localhost:3000
 
-## Step 4: Test It Out!
+## Step 4: Add Course Notes (Optional, 1 minute)
+
+1. Open http://localhost:3000
+2. In **Course Notes Library**, create a course label (for example `Math` or `Science`)
+3. Select the course from the dropdown
+4. Upload your notes/syllabus file (`.txt`, `.md`, `.pdf`, `.docx`)
+5. Start a lesson with that course selected to prioritize your uploaded notes
+
+## Step 5: Test It Out!
 
 1. Open http://localhost:3000
 2. Type a problem: `"Find the derivative of f(x) = x^2 + 3x + 1"`
