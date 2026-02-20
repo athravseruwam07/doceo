@@ -149,13 +149,16 @@ def _build_chat_events(response: dict[str, Any], step_title: str | None) -> list
 
 
 async def handle_message(
-    session_id: str, message: str, context: dict[str, Any] | None = None
+    session_id: str,
+    message: str,
+    context: dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Process a student chat message and return the tutor's response.
 
     Stores both the user message and tutor response in the session's chat_log.
     """
-    session = get_session(session_id)
+    session = get_session(session_id, user_id=user_id)
     if session is None:
         return None
 
@@ -249,6 +252,11 @@ async def handle_message(
 
     # Store tutor response
     chat_log.append(response)
-    update_session(session_id, chat_log=chat_log, confusion_state=confusion_state)
+    update_session(
+        session_id,
+        user_id=user_id,
+        chat_log=chat_log,
+        confusion_state=confusion_state,
+    )
 
     return response

@@ -2,10 +2,9 @@ import NextAuth from "next-auth";
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
 import { decodeAuthJwt, encodeAuthJwt } from "@/lib/auth-jwt";
+import { findCredentialUserByEmail } from "@/lib/credential-user-store";
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID ?? "";
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET ?? "";
@@ -20,20 +19,21 @@ const providers: NonNullable<NextAuthOptions["providers"]> = [
     },
     async authorize(credentials) {
       if (!credentials?.email || !credentials?.password) return null;
+      const email = String(credentials.email).trim().toLowerCase();
+      const password = String(credentials.password);
+      try {
+        const user = await findCredentialUserByEmail(email);
 
-      const user = await prisma.user.findUnique({
-        where: { email: credentials.email as string },
-      });
+        if (!user || !user.passwordHash) return null;
 
-      if (!user || !user.passwordHash) return null;
+        const valid = await bcrypt.compare(password, user.passwordHash);
+        if (!valid) return null;
 
-      const valid = await bcrypt.compare(
-        credentials.password as string,
-        user.passwordHash
-      );
-      if (!valid) return null;
-
-      return { id: user.id, name: user.name, email: user.email };
+        return { id: user.id, name: user.name, email: user.email };
+      } catch (error) {
+        console.error("[auth] Credentials lookup failed", error);
+        throw new Error("AUTH_UNAVAILABLE");
+      }
     },
   }),
 ];
@@ -52,8 +52,7 @@ if (googleOAuthEnabled) {
   );
 }
 
-export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+const authOptions: NextAuthOptions = {
   providers,
   session: { strategy: "jwt" },
   jwt: {

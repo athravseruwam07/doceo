@@ -2,10 +2,13 @@ import base64
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.course import get_course, search_course_snippets
 from app.models.session import create_session, get_session, list_sessions, update_session
+from app.auth import get_current_user_id
+from app.database import get_db
 from app.schemas.session import (
     MicroLessonCreate,
     SessionCreate,
@@ -77,8 +80,10 @@ def _resolve_course_context(
     return course_label, snippets
 
 
-def _create_and_store_session(
+async def _create_and_store_session(
     *,
+    db: AsyncSession,
+    user_id: str,
     title: str,
     subject: str,
     problem_text: str,
@@ -89,7 +94,9 @@ def _create_and_store_session(
     lesson_type: str,
     include_voice: bool,
 ) -> dict[str, Any]:
-    session = create_session(
+    session = await create_session(
+        db,
+        user_id=user_id,
         title=title,
         subject=subject,
         problem_text=problem_text,
@@ -100,21 +107,26 @@ def _create_and_store_session(
         lesson_type=lesson_type,
         include_voice=include_voice,
     )
-    update_session(
+    await update_session(
+        db,
         session["session_id"],
+        user_id=user_id,
         title=title,
         subject=subject,
         steps=steps,
         step_count=len(steps),
         build_stage="script_ready",
     )
-    return get_session(session["session_id"]) or session
+    return await get_session(db, session["session_id"], user_id) or session
 
 
 @router.get("", response_model=list[SessionHistoryItem])
-async def get_session_history():
+async def get_session_history(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """List prior sessions for history navigation."""
-    sessions = list_sessions()
+    sessions = await list_sessions(db, user_id)
     return [
         SessionHistoryItem(
             session_id=session["session_id"],
@@ -134,16 +146,24 @@ async def get_session_history():
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
-async def get_session_info(session_id: str):
+async def get_session_info(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Retrieve session metadata."""
-    session = get_session(session_id)
+    session = await get_session(db, session_id, user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return _build_session_response(session)
 
 
 @router.post("", response_model=SessionResponse)
-async def create_session_json(body: SessionCreate):
+async def create_session_json(
+    body: SessionCreate,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a new tutoring session from a JSON body with problem text."""
     try:
         problem_text = body.problem_text or ""
@@ -168,7 +188,9 @@ async def create_session_json(body: SessionCreate):
         resolved_problem_text = (
             problem_text.strip() or str(result.get("problem_statement", "")).strip()
         )
-        session = _create_and_store_session(
+        session = await _create_and_store_session(
+            db=db,
+            user_id=user_id,
             title=result["title"],
             subject=result["subject"],
             problem_text=resolved_problem_text,
@@ -196,6 +218,8 @@ async def create_session_upload(
     problem_text: Optional[str] = Form(default=""),
     subject_hint: Optional[str] = Form(default=None),
     course_id: Optional[str] = Form(default=None),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a new tutoring session from a file upload (image of a problem)."""
     if not file.content_type or not file.content_type.startswith("image/"):
@@ -230,7 +254,9 @@ async def create_session_upload(
             (problem_text or "").strip()
             or str(result.get("problem_statement", "")).strip()
         )
-        session = _create_and_store_session(
+        session = await _create_and_store_session(
+            db=db,
+            user_id=user_id,
             title=result["title"],
             subject=result["subject"],
             problem_text=resolved_problem_text,
@@ -253,7 +279,11 @@ async def create_session_upload(
 
 
 @router.post("/micro", response_model=SessionResponse)
-async def create_micro_session_json(body: MicroLessonCreate):
+async def create_micro_session_json(
+    body: MicroLessonCreate,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a short micro-lesson from typed text."""
     try:
         problem_text = body.problem_text or ""
@@ -279,7 +309,9 @@ async def create_micro_session_json(body: MicroLessonCreate):
         prepared_steps = await prepare_micro_lesson_steps(
             result["steps"], include_voice=include_voice
         )
-        session = _create_and_store_session(
+        session = await _create_and_store_session(
+            db=db,
+            user_id=user_id,
             title=result["title"],
             subject=result["subject"],
             problem_text=problem_text,
@@ -308,6 +340,8 @@ async def create_micro_session_upload(
     subject_hint: Optional[str] = Form(default=None),
     course_id: Optional[str] = Form(default=None),
     include_voice: bool = Form(default=True),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a short micro-lesson from uploaded image/text."""
     if not file.content_type or not file.content_type.startswith("image/"):
@@ -341,7 +375,9 @@ async def create_micro_session_upload(
         prepared_steps = await prepare_micro_lesson_steps(
             result["steps"], include_voice=bool(include_voice)
         )
-        session = _create_and_store_session(
+        session = await _create_and_store_session(
+            db=db,
+            user_id=user_id,
             title=result["title"],
             subject=result["subject"],
             problem_text=problem_text or "",

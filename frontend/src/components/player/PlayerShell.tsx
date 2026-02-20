@@ -518,10 +518,10 @@ export default function PlayerShell({
         <Link href="/app" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
           Home
         </Link>
-        <Link href="/?view=exam-cram" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
+        <Link href="/app?view=exam-cram" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
           Cram
         </Link>
-        <Link href="/?view=history" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
+        <Link href="/app?view=history" className="px-2 py-1 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink)]">
           History
         </Link>
         <button

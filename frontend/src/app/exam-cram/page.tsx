@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function ExamCramPage() {
-  redirect("/?view=exam-cram");
+  redirect("/app?view=exam-cram");
 }

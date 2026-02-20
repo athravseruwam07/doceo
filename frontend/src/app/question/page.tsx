@@ -9,5 +9,5 @@ export default async function QuestionRedirectPage({
 }: QuestionRedirectPageProps) {
   const params = await searchParams;
   const view = typeof params.view === "string" ? params.view : "";
-  redirect(view ? `/?view=${encodeURIComponent(view)}` : "/");
+  redirect(view ? `/app?view=${encodeURIComponent(view)}` : "/app");
 }
