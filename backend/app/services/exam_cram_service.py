@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.session import get_session, update_session
 from app.schemas.exam_cram import ExamCramResponse
 
@@ -688,12 +690,13 @@ def _build_safe_fallback_payload(
 async def build_exam_cram_plan(
     session_id: str,
     materials: list[dict[str, str]],
+    db: AsyncSession,
     subject_hint: str | None = None,
     exam_name: str | None = None,
 ) -> dict[str, Any] | None:
     """Build and persist an exam-cram plan for a session."""
     try:
-        session = get_session(session_id)
+        session = await get_session(db, session_id)
         if session is None:
             return None
 
@@ -785,7 +788,7 @@ async def build_exam_cram_plan(
             )
             payload = ExamCramResponse(**payload).model_dump()
 
-        update_session(session_id, exam_cram=payload, exam_materials=material_summaries)
+        await update_session(db, session_id, exam_cram=payload, exam_materials=material_summaries)
         return payload
     except Exception:
         logger.exception("Exam cram plan generation failed for session %s", session_id)

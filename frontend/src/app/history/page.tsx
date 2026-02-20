@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getSessionHistory } from "@/lib/api";
 import { SessionHistoryItem } from "@/lib/types";
+import AppNavbar from "@/components/nav/AppNavbar";
 
 function formatWhen(value?: string): string {
   if (!value) return "Unknown time";
@@ -39,19 +40,7 @@ export default function HistoryPage() {
 
   return (
     <div className="min-h-screen bg-[var(--cream)]">
-      <nav className="px-6 py-4 flex items-center justify-between border-b border-[var(--border)] bg-[var(--paper)]">
-        <span className="font-[family-name:var(--font-heading)] text-[20px] font-semibold text-[var(--ink)]">
-          Doceo
-        </span>
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-[13px] text-[var(--ink-tertiary)] hover:text-[var(--ink)]">
-            Home
-          </Link>
-          <Link href="/exam-cram" className="text-[13px] text-[var(--ink-tertiary)] hover:text-[var(--ink)]">
-            Exam Cram
-          </Link>
-        </div>
-      </nav>
+      <AppNavbar />
 
       <main className="mx-auto max-w-4xl px-4 py-8">
         <h1 className="font-[family-name:var(--font-heading)] text-[30px] text-[var(--ink)] mb-2">

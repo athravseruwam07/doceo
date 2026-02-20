@@ -1,21 +1,18 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.session import get_session, update_session
 from app.services.voice_service import get_voice_service
 
 
-async def handle_message(session_id: str, message: str, context: dict | None = None) -> dict:
-    """Process a student chat message and return the tutor's response.
-
-    Stores both the user message and tutor response in the session's chat_log.
-    """
-    session = get_session(session_id)
+async def handle_message(session_id: str, message: str, db: AsyncSession, context: dict | None = None) -> dict:
+    """Process a student chat message and return the tutor's response."""
+    session = await get_session(db, session_id)
     if session is None:
         return None
 
-    # Store user message
     chat_log = session.get("chat_log", [])
     chat_log.append({"role": "student", "message": message})
 
-    # Generate tutor response
     context_suffix = ""
     if context:
         context_suffix = (
@@ -34,7 +31,6 @@ async def handle_message(session_id: str, message: str, context: dict | None = N
         question=f"{message}{context_suffix}",
     )
 
-    # Generate audio for tutor response
     voice_service = get_voice_service()
     narration = response.get("narration", response.get("message", ""))
     audio_data = await voice_service.generate_narration_audio(narration)
@@ -48,8 +44,7 @@ async def handle_message(session_id: str, message: str, context: dict | None = N
             "Returning chat response without narration audio."
         )
 
-    # Store tutor response
     chat_log.append(response)
-    update_session(session_id, chat_log=chat_log)
+    await update_session(db, session_id, chat_log=chat_log)
 
     return response

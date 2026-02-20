@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { createExamCramPlanUpload, createSession } from "@/lib/api";
 import { ExamCramResponse } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
+import AppNavbar from "@/components/nav/AppNavbar";
 
 const SUBJECT_HINTS = [
   "General STEM",
@@ -62,25 +62,7 @@ export default function ExamCramPage() {
 
   return (
     <div className="min-h-screen bg-[var(--cream)]">
-      <nav className="px-6 py-4 flex items-center justify-between border-b border-[var(--border)] bg-[var(--paper)]">
-        <span className="font-[family-name:var(--font-heading)] text-[20px] font-semibold text-[var(--ink)]">
-          Doceo
-        </span>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="text-[13px] text-[var(--ink-tertiary)] hover:text-[var(--ink)]"
-          >
-            Home
-          </Link>
-          <Link
-            href="/history"
-            className="text-[13px] text-[var(--ink-tertiary)] hover:text-[var(--ink)]"
-          >
-            History
-          </Link>
-        </div>
-      </nav>
+      <AppNavbar />
 
       <main className="mx-auto max-w-5xl px-4 py-8 space-y-6">
         <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--paper)] p-5">

@@ -1,8 +1,11 @@
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.session import get_session
 from app.schemas.exam_cram import ExamCramResponse, ExamCramTextRequest
 from app.services.exam_cram_service import build_exam_cram_plan
+from app.auth import get_current_user_id
+from app.database import get_db
 
 router = APIRouter()
 
@@ -31,9 +34,14 @@ def _decode_upload_bytes(raw: bytes) -> str:
 
 
 @router.post("/{session_id}/exam-cram", response_model=ExamCramResponse)
-async def create_exam_cram_plan_json(session_id: str, body: ExamCramTextRequest):
+async def create_exam_cram_plan_json(
+    session_id: str,
+    body: ExamCramTextRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Generate a predictive exam-cram plan from text materials."""
-    session = get_session(session_id)
+    session = await get_session(db, session_id, user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -49,6 +57,7 @@ async def create_exam_cram_plan_json(session_id: str, body: ExamCramTextRequest)
     result = await build_exam_cram_plan(
         session_id=session_id,
         materials=materials,
+        db=db,
         subject_hint=body.subject_hint,
         exam_name=body.exam_name,
     )
@@ -68,9 +77,11 @@ async def create_exam_cram_plan_upload(
     notes: str = Form(default=""),
     subject_hint: str | None = Form(default=None),
     exam_name: str | None = Form(default=None),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """Generate exam-cram plan from uploaded files and optional notes."""
-    session = get_session(session_id)
+    session = await get_session(db, session_id, user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -114,6 +125,7 @@ async def create_exam_cram_plan_upload(
     result = await build_exam_cram_plan(
         session_id=session_id,
         materials=materials,
+        db=db,
         subject_hint=subject_hint,
         exam_name=exam_name,
     )
@@ -127,9 +139,13 @@ async def create_exam_cram_plan_upload(
 
 
 @router.get("/{session_id}/exam-cram", response_model=ExamCramResponse)
-async def get_exam_cram_plan(session_id: str):
+async def get_exam_cram_plan(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Get the latest generated exam-cram plan for a session."""
-    session = get_session(session_id)
+    session = await get_session(db, session_id, user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
