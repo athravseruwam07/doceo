@@ -1,14 +1,17 @@
 import base64
 import logging
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 from app.schemas.session import SessionCreate, SessionResponse, SessionHistoryItem
-from app.models.session import create_session, get_session, list_sessions
+from app.models.session import create_session, get_session, list_sessions, update_session
 from app.services.ai_service import analyze_problem
+from app.auth import get_current_user_id
+from app.database import get_db
 
 router = APIRouter()
 
@@ -19,9 +22,12 @@ def _error_message(exc: Exception) -> str:
 
 
 @router.get("", response_model=list[SessionHistoryItem])
-async def get_session_history():
+async def get_session_history(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """List prior sessions for history navigation."""
-    sessions = list_sessions()
+    sessions = await list_sessions(db, user_id)
     return [
         SessionHistoryItem(
             session_id=session["session_id"],
@@ -38,9 +44,13 @@ async def get_session_history():
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
-async def get_session_info(session_id: str):
+async def get_session_info(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Retrieve session metadata."""
-    session = get_session(session_id)
+    session = await get_session(db, session_id, user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return SessionResponse(
@@ -58,7 +68,11 @@ async def get_session_info(session_id: str):
 
 
 @router.post("", response_model=SessionResponse)
-async def create_session_json(body: SessionCreate):
+async def create_session_json(
+    body: SessionCreate,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a new tutoring session from a JSON body with problem text."""
     problem_text = body.problem_text or ""
 
@@ -73,18 +87,17 @@ async def create_session_json(body: SessionCreate):
 
     resolved_problem_text = (problem_text or result.get("problem_statement") or "").strip()
 
-    session = create_session(
+    session = await create_session(
+        db,
+        user_id=user_id,
         title=result["title"],
         subject=result["subject"],
         problem_text=resolved_problem_text,
         step_count=len(result["steps"]),
     )
 
-    # Store the generated steps in the session
-    from app.models.session import update_session
-
-    update_session(session["session_id"], steps=result["steps"])
-    update_session(session["session_id"], build_stage="script_ready")
+    await update_session(db, session["session_id"], steps=result["steps"])
+    await update_session(db, session["session_id"], build_stage="script_ready")
 
     return SessionResponse(
         session_id=session["session_id"],
@@ -136,15 +149,15 @@ async def create_session_upload(
     file: UploadFile = File(...),
     problem_text: Optional[str] = Form(default=""),
     subject_hint: Optional[str] = Form(default=None),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a new tutoring session from a file upload (image of a problem)."""
-    # Validate content type
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload an image.")
 
-    # Read and validate file size
     contents = await file.read()
-    max_size = 10 * 1024 * 1024  # 10MB
+    max_size = 10 * 1024 * 1024
     if len(contents) > max_size:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
 
@@ -164,7 +177,9 @@ async def create_session_upload(
 
     resolved_problem_text = ((problem_text or "").strip() or str(result.get("problem_statement", "")).strip())
 
-    session = create_session(
+    session = await create_session(
+        db,
+        user_id=user_id,
         title=result["title"],
         subject=result["subject"],
         problem_text=resolved_problem_text,
@@ -172,11 +187,8 @@ async def create_session_upload(
         step_count=len(result["steps"]),
     )
 
-    # Store the generated steps in the session
-    from app.models.session import update_session
-
-    update_session(session["session_id"], steps=result["steps"])
-    update_session(session["session_id"], build_stage="script_ready")
+    await update_session(db, session["session_id"], steps=result["steps"])
+    await update_session(db, session["session_id"], build_stage="script_ready")
 
     return SessionResponse(
         session_id=session["session_id"],

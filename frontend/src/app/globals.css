@@ -964,6 +964,10 @@ body {
 }
 
 /* Smooth transitions for theme */
+html[data-theme-init="true"] * {
+  transition: none !important;
+}
+
 * {
   @apply transition-colors duration-200;
 }
@@ -993,4 +997,138 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* --- Landing visuals --- */
+.landing-shell {
+  position: relative;
+}
+
+.landing-hero {
+  isolation: isolate;
+}
+
+.landing-ambient {
+  pointer-events: none;
+  position: absolute;
+  inset: -8% -8% auto;
+  z-index: -1;
+  min-height: 560px;
+}
+
+.landing-blob {
+  position: absolute;
+  display: block;
+  filter: blur(20px);
+  opacity: 0.56;
+  border-radius: 999px;
+}
+
+.landing-blob-a {
+  left: 12%;
+  top: 70px;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle at 35% 40%, color-mix(in srgb, var(--emerald-light) 50%, transparent), transparent 72%);
+}
+
+.landing-blob-b {
+  right: 8%;
+  top: 200px;
+  width: 500px;
+  height: 390px;
+  background: radial-gradient(circle at 60% 46%, color-mix(in srgb, var(--emerald-subtle) 76%, transparent), transparent 74%);
+}
+
+.landing-grid-sheen {
+  position: absolute;
+  inset: 8% 14% auto;
+  height: 520px;
+  border-radius: 40px;
+  background-image:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--border) 34%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--border) 34%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 35%, black, transparent 82%);
+  opacity: 0.34;
+}
+
+.landing-hero-card {
+  backdrop-filter: blur(5px);
+}
+
+.landing-flow-line {
+  position: absolute;
+  left: 13px;
+  top: 18px;
+  bottom: 18px;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--emerald) 80%, transparent),
+    color-mix(in srgb, var(--emerald-light) 35%, transparent)
+  );
+}
+
+.landing-flow-line::before,
+.landing-flow-line::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--emerald);
+}
+
+.landing-flow-line::before {
+  top: -2px;
+}
+
+.landing-flow-line::after {
+  bottom: -2px;
+}
+
+@media (max-width: 1023px) {
+  .landing-flow-line {
+    display: none;
+  }
+
+  .landing-blob-a {
+    left: -6%;
+    top: 70px;
+    width: 320px;
+    height: 320px;
+  }
+
+  .landing-blob-b {
+    right: -10%;
+    top: 180px;
+    width: 360px;
+    height: 300px;
+  }
+
+  .landing-grid-sheen {
+    inset: 16% 4% auto;
+    height: 360px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-blob,
+  .landing-grid-sheen,
+  .landing-shell [data-motion],
+  .landing-shell .motion-safe-only {
+    animation: none !important;
+    transition: none !important;
+  }
 }

@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: Optional[str] = None
     elevenlabs_model: Optional[str] = None
 
+    # Database
+    database_url: str = "postgresql+asyncpg://doceo:doceo@localhost:5432/doceo"
+
+    # Auth
+    nextauth_secret: str = ""
+
     # Application
     environment: str = "development"
     cors_origins: str = "http://localhost:3000"  # Store as string, convert to list in property

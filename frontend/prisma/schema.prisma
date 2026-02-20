@@ -1,0 +1,150 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ── NextAuth required models ────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+
+  accounts         Account[]
+  sessions         Session[]
+  tutoringSessions TutoringSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ── Application models ──────────────────────────────────────────────
+
+model TutoringSession {
+  id          String  @id @default(cuid())
+  sessionId   String  @unique @default(cuid()) @map("session_id")
+  userId      String  @map("user_id")
+  title       String
+  subject     String
+  problemText String? @map("problem_text") @db.Text
+  imageB64    String? @map("image_b64") @db.Text
+  stepCount   Int     @default(0) @map("step_count")
+  status      String  @default("processing")
+  voiceStatus String  @default("unknown") @map("voice_status")
+  buildStage  String  @default("received") @map("build_stage")
+  audioStatus String? @map("audio_status")
+
+  stepsJson        Json  @default("[]") @map("steps_json")
+  chatLogJson      Json  @default("[]") @map("chat_log_json")
+  examMaterialsJson Json @default("[]") @map("exam_materials_json")
+  examCramJson     Json? @map("exam_cram_json")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonSteps  LessonStep[]
+  chatMessages ChatMessage[]
+  examCrams    ExamCram[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tutoring_sessions")
+}
+
+model LessonStep {
+  id                String @id @default(cuid())
+  tutoringSessionId String @map("tutoring_session_id")
+  stepNumber        Int    @map("step_number")
+  title             String
+  content           String @db.Text
+  hint              String? @db.Text
+  narration         String? @db.Text
+  audioUrl          String? @map("audio_url")
+  audioDuration     Float?  @map("audio_duration")
+  events            Json    @default("[]")
+
+  tutoringSession TutoringSession @relation(fields: [tutoringSessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("lesson_steps")
+}
+
+model ChatMessage {
+  id                String @id @default(cuid())
+  tutoringSessionId String @map("tutoring_session_id")
+  role              String
+  message           String @db.Text
+  narration         String? @db.Text
+  audioUrl          String? @map("audio_url")
+  audioDuration     Float?  @map("audio_duration")
+  events            Json    @default("[]")
+
+  tutoringSession TutoringSession @relation(fields: [tutoringSessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("chat_messages")
+}
+
+model ExamCram {
+  id                String @id @default(cuid())
+  tutoringSessionId String @map("tutoring_session_id")
+  subject           String
+  examName          String? @map("exam_name")
+  payload           Json
+
+  tutoringSession TutoringSession @relation(fields: [tutoringSessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("exam_crams")
+}
